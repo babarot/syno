@@ -7,4 +7,5 @@ changelog/skip:
         - '!main.go'
         - '!go.mod'
         - '!go.sum'
+        - '!skills/**'
         - '!CHANGELOG.md'

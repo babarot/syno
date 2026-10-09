@@ -222,6 +222,21 @@ claude mcp add syno-office -- syno mcp --profile office
 claude mcp add syno -- syno mcp --allow-api   # also offer syno_api
 ```
 
+## Agent skill
+
+[`skills/syno`](skills/syno/SKILL.md) is an [Agent Skill](https://agentskills.io) that teaches an AI agent to answer questions about the NAS with syno: which command to start from, how to look for a DSM API when no command covers the question, and when to ask you to log in. It works with or without `syno mcp`. Install syno first, then the skill:
+
+```bash
+gh skill install babarot/syno syno --agent claude-code --scope user
+npx skills add babarot/syno -g
+```
+
+The release archives carry the skill too, and the Nix package installs it in `share/skills/syno`, so that Home Manager can link it with the binary of the same release:
+
+```nix
+home.file.".claude/skills/syno".source = "${syno}/share/skills/syno";
+```
+
 ## Configuration
 
 syno keeps two files in `~/.config/syno` (or `$XDG_CONFIG_HOME/syno`):
