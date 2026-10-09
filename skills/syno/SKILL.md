@@ -23,7 +23,7 @@ Each tool call and command uses the profile given by `--profile` or `SYNO_PROFIL
 - Space, pools, volumes, disks, temperature, CPU, memory, DSM version: `syno status` (`syno_status`).
 - Containers of Container Manager: `syno container list` (`syno_containers`).
 - Package updates: `syno package list` (`syno_packages`).
-- Shared folders and the space each uses: `syno share list` (`syno_shares`).
+- Shared folders and the space each uses: `syno share list` (`syno_shares`). Add `--recycle` (`recycle`) for what emptying the recycle bins would free.
 
 Start broad and narrow down: a warning in doctor tells you which part to look at in status. In the answer, give the numbers and where they come from (the doctor check, or the field of status), and say which `host` answered when there is more than one NAS.
 
