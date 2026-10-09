@@ -26,22 +26,24 @@ func profileName() string {
 	return os.Getenv("SYNO_PROFILE")
 }
 
-// loadConfig loads the config and explains the format change to users who
-// still have the config.json of earlier versions.
-func loadConfig() (*config.Config, error) {
-	cfg, err := config.Load()
+// loadProfiles loads the profiles and explains the format change to users
+// who still have the files of earlier versions.
+func loadProfiles() (*config.Profiles, error) {
+	cfg, err := config.LoadProfiles()
 	if err != nil {
 		return nil, err
 	}
-	if len(cfg.Profiles) == 0 && config.HasLegacy() {
-		return nil, errors.New("the config format changed to profiles in config.yaml, run `syno login` again")
+	if len(cfg.Profiles) == 0 {
+		if hint := config.LegacyHint(); hint != "" {
+			return nil, errors.New(hint)
+		}
 	}
 	return cfg, nil
 }
 
 // selectProfile returns the profile to use for commands that log in.
 func selectProfile() (string, *config.Profile, error) {
-	cfg, err := loadConfig()
+	cfg, err := loadProfiles()
 	if err != nil {
 		return "", nil, err
 	}

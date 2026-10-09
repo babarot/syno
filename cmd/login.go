@@ -26,7 +26,7 @@ func newLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Log in to a NAS and save it as a profile",
 		Long: `Log in to DSM once to check the account, then save the NAS and the user as
-a profile in ~/.config/syno/config.yaml and the password to the OS keyring.
+a profile in ~/.config/syno/profiles.yaml and the password to the OS keyring.
 
 Without --host, the NAS is found on the local network. Without --profile, the
 profile is named after the NAS, and an existing profile for the same URL and
@@ -42,8 +42,8 @@ account uses 2FA, you are asked for a code once and the device token DSM
 issues is saved so that later commands do not ask again.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			// Not loadConfig: logging in is how users move off config.json.
-			cfg, err := config.Load()
+			// Not loadProfiles: logging in is how users move off config.json.
+			cfg, err := config.LoadProfiles()
 			if err != nil {
 				return err
 			}

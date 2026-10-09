@@ -23,7 +23,7 @@ func newProfileCmd() *cobra.Command {
 			Short:   "List the profiles, marking the current one",
 			Args:    cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				cfg, err := loadConfig()
+				cfg, err := loadProfiles()
 				if err != nil {
 					return err
 				}
@@ -56,7 +56,7 @@ func newProfileCmd() *cobra.Command {
 			Short: "Make a profile the current one",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				cfg, err := loadConfig()
+				cfg, err := loadProfiles()
 				if err != nil {
 					return err
 				}
@@ -77,7 +77,7 @@ and user.`,
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				name := args[0]
-				cfg, err := loadConfig()
+				cfg, err := loadProfiles()
 				if err != nil {
 					return err
 				}

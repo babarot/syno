@@ -1,5 +1,6 @@
-// Package config stores the NAS profiles syno talks to.
-// Secrets live in the OS keyring, never in this file.
+// Package config reads and writes syno's files in ~/.config/syno:
+// profiles.yaml, which syno writes, and config.yaml, which users write.
+// Secrets live in the OS keyring, never in these files.
 package config
 
 import (
@@ -12,8 +13,9 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Config is the content of config.yaml.
-type Config struct {
+// Profiles is the content of profiles.yaml. syno rewrites this file, so
+// users should not keep comments in it.
+type Profiles struct {
 	// Current is the profile used when none is given explicitly.
 	Current  string              `yaml:"current,omitempty"`
 	Profiles map[string]*Profile `yaml:"profiles,omitempty"`
@@ -49,51 +51,71 @@ func dir() (string, error) {
 	return filepath.Join(d, "syno"), nil
 }
 
-// Path returns the location of config.yaml.
-func Path() (string, error) {
+func path(name string) (string, error) {
 	d, err := dir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(d, "config.yaml"), nil
+	return filepath.Join(d, name), nil
 }
 
-// HasLegacy reports whether only the config.json of earlier versions exists.
-func HasLegacy() bool {
+// ProfilesPath returns the location of profiles.yaml.
+func ProfilesPath() (string, error) { return path("profiles.yaml") }
+
+// LegacyHint explains what to do when only files of earlier versions exist:
+// config.json, or a config.yaml that still holds the profiles. It returns ""
+// when there is nothing to migrate.
+func LegacyHint() string {
 	d, err := dir()
 	if err != nil {
-		return false
+		return ""
 	}
-	if _, err := os.Stat(filepath.Join(d, "config.yaml")); err == nil {
-		return false
+	if exists(filepath.Join(d, "profiles.yaml")) {
+		return ""
 	}
-	_, err = os.Stat(filepath.Join(d, "config.json"))
+	if b, err := os.ReadFile(filepath.Join(d, "config.yaml")); err == nil {
+		var top map[string]any
+		if yaml.Unmarshal(b, &top) == nil {
+			if _, ok := top["profiles"]; ok {
+				return fmt.Sprintf("profiles moved from config.yaml to profiles.yaml, rename %s to %s",
+					filepath.Join(d, "config.yaml"), filepath.Join(d, "profiles.yaml"))
+			}
+		}
+	}
+	if exists(filepath.Join(d, "config.json")) {
+		return "the config format changed to profiles in profiles.yaml, run `syno login` again"
+	}
+	return ""
+}
+
+func exists(p string) bool {
+	_, err := os.Stat(p)
 	return err == nil
 }
 
-// Load returns an empty Config when the file does not exist yet.
-func Load() (*Config, error) {
-	p, err := Path()
+// LoadProfiles returns empty Profiles when the file does not exist yet.
+func LoadProfiles() (*Profiles, error) {
+	p, err := ProfilesPath()
 	if err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return &Config{}, nil
+		return &Profiles{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var c Config
+	var c Profiles
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", p, err)
 	}
 	return &c, nil
 }
 
-// Save writes the config with permissions only the user can read.
-func (c *Config) Save() error {
-	p, err := Path()
+// Save writes profiles.yaml with permissions only the user can read.
+func (c *Profiles) Save() error {
+	p, err := ProfilesPath()
 	if err != nil {
 		return err
 	}
@@ -109,7 +131,7 @@ func (c *Config) Save() error {
 
 // Select picks a profile: name when given, then Current, then the only
 // profile if there is exactly one.
-func (c *Config) Select(name string) (string, *Profile, error) {
+func (c *Profiles) Select(name string) (string, *Profile, error) {
 	if name == "" {
 		name = c.Current
 	}
@@ -132,7 +154,7 @@ func (c *Config) Select(name string) (string, *Profile, error) {
 }
 
 // Set adds or replaces a profile. The first profile becomes Current.
-func (c *Config) Set(name string, p *Profile) {
+func (c *Profiles) Set(name string, p *Profile) {
 	if c.Profiles == nil {
 		c.Profiles = map[string]*Profile{}
 	}
@@ -143,7 +165,7 @@ func (c *Config) Set(name string, p *Profile) {
 }
 
 // Remove deletes a profile and clears Current if it pointed to it.
-func (c *Config) Remove(name string) {
+func (c *Profiles) Remove(name string) {
 	delete(c.Profiles, name)
 	if c.Current == name {
 		c.Current = ""
@@ -151,7 +173,7 @@ func (c *Config) Remove(name string) {
 }
 
 // FindByURL returns the name of the profile for url and user, if any.
-func (c *Config) FindByURL(url, user string) (string, bool) {
+func (c *Profiles) FindByURL(url, user string) (string, bool) {
 	for _, n := range c.Names() {
 		p := c.Profiles[n]
 		if p.URL == url && (user == "" || p.User == user) {
@@ -163,7 +185,7 @@ func (c *Config) FindByURL(url, user string) (string, bool) {
 
 // SharesAccount reports whether another profile than name uses the same
 // URL and user, and so the same keyring items.
-func (c *Config) SharesAccount(name string) bool {
+func (c *Profiles) SharesAccount(name string) bool {
 	p, ok := c.Profiles[name]
 	if !ok {
 		return false
@@ -177,7 +199,7 @@ func (c *Config) SharesAccount(name string) bool {
 }
 
 // Names returns the profile names in sorted order.
-func (c *Config) Names() []string {
+func (c *Profiles) Names() []string {
 	names := make([]string, 0, len(c.Profiles))
 	for n := range c.Profiles {
 		names = append(names, n)

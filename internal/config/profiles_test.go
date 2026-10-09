@@ -3,13 +3,14 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestSaveLoad(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	c, err := Load()
+	c, err := LoadProfiles()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +23,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, _ := Path()
+	p, _ := ProfilesPath()
 	info, err := os.Stat(p)
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +32,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Errorf("permission = %o, want 600", perm)
 	}
 
-	got, err := Load()
+	got, err := LoadProfiles()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,12 +45,12 @@ func TestSaveLoad(t *testing.T) {
 }
 
 func TestSelect(t *testing.T) {
-	one := &Config{Profiles: map[string]*Profile{"a": {URL: "https://a"}}}
+	one := &Profiles{Profiles: map[string]*Profile{"a": {URL: "https://a"}}}
 	if name, _, err := one.Select(""); err != nil || name != "a" {
 		t.Errorf("single profile: %q, %v", name, err)
 	}
 
-	two := &Config{Current: "b", Profiles: map[string]*Profile{"a": {URL: "https://a"}, "b": {URL: "https://b"}}}
+	two := &Profiles{Current: "b", Profiles: map[string]*Profile{"a": {URL: "https://a"}, "b": {URL: "https://b"}}}
 	if name, _, err := two.Select(""); err != nil || name != "b" {
 		t.Errorf("current: %q, %v", name, err)
 	}
@@ -65,13 +66,13 @@ func TestSelect(t *testing.T) {
 		t.Error("ambiguous selection should fail")
 	}
 
-	if _, _, err := (&Config{}).Select(""); err != ErrNoProfile {
+	if _, _, err := (&Profiles{}).Select(""); err != ErrNoProfile {
 		t.Errorf("empty: err = %v, want ErrNoProfile", err)
 	}
 }
 
 func TestRemoveAndSharesAccount(t *testing.T) {
-	c := &Config{}
+	c := &Profiles{}
 	c.Set("a", &Profile{URL: "https://nas", User: "admin"})
 	c.Set("b", &Profile{URL: "https://nas", User: "admin"})
 	c.Set("c", &Profile{URL: "https://nas", User: "other"})
@@ -92,25 +93,43 @@ func TestRemoveAndSharesAccount(t *testing.T) {
 	}
 }
 
-func TestHasLegacy(t *testing.T) {
+func TestLegacyHint(t *testing.T) {
 	d := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", d)
-	if HasLegacy() {
-		t.Error("no files: HasLegacy should be false")
+	dir := filepath.Join(d, "syno")
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.MkdirAll(filepath.Join(d, "syno"), 0o700); err != nil {
+
+	if got := LegacyHint(); got != "" {
+		t.Errorf("no files: %q", got)
+	}
+
+	write("config.json", "{}")
+	if got := LegacyHint(); !strings.Contains(got, "syno login") {
+		t.Errorf("config.json: %q", got)
+	}
+
+	write("config.yaml", "profiles:\n  nas:\n    url: https://192.168.1.10:5001\n")
+	if got := LegacyHint(); !strings.Contains(got, "rename") {
+		t.Errorf("config.yaml with profiles: %q", got)
+	}
+
+	write("config.yaml", "doctor:\n  skip: []\n")
+	if got := LegacyHint(); !strings.Contains(got, "syno login") {
+		t.Errorf("settings-only config.yaml and config.json: %q", got)
+	}
+
+	if err := (&Profiles{}).Save(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(d, "syno", "config.json"), []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if !HasLegacy() {
-		t.Error("only config.json: HasLegacy should be true")
-	}
-	if err := (&Config{}).Save(); err != nil {
-		t.Fatal(err)
-	}
-	if HasLegacy() {
-		t.Error("config.yaml exists: HasLegacy should be false")
+	if got := LegacyHint(); got != "" {
+		t.Errorf("profiles.yaml exists: %q", got)
 	}
 }
