@@ -64,7 +64,7 @@ func checkMCPStart() error {
 type backend interface {
 	Status(ctx context.Context) (any, error)
 	Doctor(ctx context.Context, skip, only []string) (any, error)
-	Containers(ctx context.Context, runningOnly bool, project string) (any, error)
+	Containers(ctx context.Context, opts containerListOptions) (any, error)
 	Packages(ctx context.Context, outdated bool) (any, error)
 	Shares(ctx context.Context, recycle bool) (any, error)
 	APIList(ctx context.Context, filter string) (any, error)
@@ -85,8 +85,8 @@ func (nasBackend) Doctor(ctx context.Context, skip, only []string) (any, error) 
 	return runDoctor(ctx, skip, only)
 }
 
-func (nasBackend) Containers(ctx context.Context, runningOnly bool, project string) (any, error) {
-	return listContainers(ctx, runningOnly, project)
+func (nasBackend) Containers(ctx context.Context, opts containerListOptions) (any, error) {
+	return listContainers(ctx, opts)
 }
 
 func (nasBackend) Packages(ctx context.Context, outdated bool) (any, error) {
@@ -114,6 +114,7 @@ type (
 	containersInput struct {
 		Running bool   `json:"running,omitempty" jsonschema:"List only running containers"`
 		Project string `json:"project,omitempty" jsonschema:"List only the containers of this Docker Compose project"`
+		Usage   bool   `json:"usage,omitempty" jsonschema:"Add cpu_percent (100 is one core) and memory_bytes for running containers. Takes a second or two longer"`
 	}
 	sharesInput struct {
 		Recycle bool `json:"recycle,omitempty" jsonschema:"Also sum what each recycle bin holds, the space emptying it would free. Takes a while for recycle bins with many files"`
@@ -173,7 +174,7 @@ func newMCPServer(b backend, allowAPI bool) *mcp.Server {
 		Description: "List the Docker containers of Container Manager on the Synology NAS with their state, health check, Docker Compose project, image and docker ps status. Stopped containers are included unless running is set.",
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in containersInput) (*mcp.CallToolResult, any, error) {
-		out, err := b.Containers(ctx, in.Running, in.Project)
+		out, err := b.Containers(ctx, containerListOptions{RunningOnly: in.Running, Project: in.Project, Usage: in.Usage})
 		return nil, out, err
 	})
 

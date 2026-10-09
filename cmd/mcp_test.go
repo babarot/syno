@@ -33,8 +33,8 @@ func (f *fakeBackend) Doctor(_ context.Context, skip, only []string) (any, error
 	return map[string]any{"status": "ok"}, f.err
 }
 
-func (f *fakeBackend) Containers(_ context.Context, running bool, project string) (any, error) {
-	f.args = []any{running, project}
+func (f *fakeBackend) Containers(_ context.Context, opts containerListOptions) (any, error) {
+	f.args = []any{opts.RunningOnly, opts.Project, opts.Usage}
 	return &containerList{Host: testHost, Containers: []containerRow{{Name: "web-app-1", State: "running", Image: "example/app:latest", Status: "Up 2 days"}}}, f.err
 }
 
@@ -132,7 +132,7 @@ func TestMCPCalls(t *testing.T) {
 	}{
 		{"syno_status", nil, nil, `{"model":"DS923+"}`},
 		{"syno_doctor", map[string]any{"only": []string{"volumes"}}, []any{[]string(nil), []string{"volumes"}}, `{"status":"ok"}`},
-		{"syno_containers", map[string]any{"running": true, "project": "web"}, []any{true, "web"},
+		{"syno_containers", map[string]any{"running": true, "project": "web", "usage": true}, []any{true, "web", true},
 			`{"host":"` + testHost + `","containers":[{"name":"web-app-1","state":"running","image":"example/app:latest","status":"Up 2 days"}]}`},
 		{"syno_packages", map[string]any{"outdated": true}, []any{true},
 			`{"host":"` + testHost + `","packages":[{"id":"web","name":"","version":"1.2.0-0100","latest":"1.3.0-0110","security":false,"in_store":true,"status":""}]}`},
