@@ -11,12 +11,15 @@ type SystemInfo struct {
 	FirmwareVer string `json:"firmware_ver"`
 	UpTime      string `json:"up_time"` // "h:m:s", hours may exceed 24
 	SysTemp     Num    `json:"sys_temp"`
-	RAMSize     Num    `json:"ram_size"` // MB
-	CPUVendor   string `json:"cpu_vendor"`
-	CPUFamily   string `json:"cpu_family"`
-	CPUSeries   string `json:"cpu_series"`
-	CPUCores    string `json:"cpu_cores"`
-	Time        string `json:"time"`
+	// DSM's own judgement of the temperature.
+	SysTempWarn        bool   `json:"sys_tempwarn"`
+	TemperatureWarning bool   `json:"temperature_warning"`
+	RAMSize            Num    `json:"ram_size"` // MB
+	CPUVendor          string `json:"cpu_vendor"`
+	CPUFamily          string `json:"cpu_family"`
+	CPUSeries          string `json:"cpu_series"`
+	CPUCores           string `json:"cpu_cores"`
+	Time               string `json:"time"`
 }
 
 func (c *Client) SystemInfo(ctx context.Context) (*SystemInfo, error) {

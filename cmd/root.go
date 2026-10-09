@@ -17,6 +17,7 @@ func NewRootCmd(version, revision string) *cobra.Command {
 		newDiscoverCmd(),
 		newLoginCmd(),
 		newStatusCmd(),
+		newDoctorCmd(),
 		newAPICmd(),
 	)
 
