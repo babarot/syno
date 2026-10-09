@@ -29,8 +29,8 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Check the health of the NAS",
 		Long: `Check the health of the NAS: storage pools, volumes, disks, data scrubbing,
-temperatures, updates, the Security Advisor and certificates. --list shows
-every check.
+temperatures, updates, the Security Advisor, certificates and containers.
+--list shows every check.
 
 Checks can be turned off with --skip or in ~/.config/syno/config.yaml, and
 the thresholds can be changed there too:

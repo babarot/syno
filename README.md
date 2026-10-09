@@ -132,6 +132,7 @@ Runs health checks and reports each as ok, warn, fail, unknown or skip. `syno do
 | `dsm-update` | A newer DSM (the NAS asks Synology's update server) |
 | `security-advisor` | Findings of the Security Advisor and the age of its last scan |
 | `certificates` | Broken, expired and expiring certificates |
+| `containers` | Running containers that are unhealthy or keep restarting. Stopped ones are only counted. Skipped without Container Manager |
 
 ```bash
 syno doctor --skip dsm-update   # turn checks off
