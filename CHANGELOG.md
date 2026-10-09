@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/babarot/syno/compare/0.2.0...0.3.0) - 2026-10-09
+### New Features
+- Add syno share list to see which shared folders use the space by @babarot in https://github.com/babarot/syno/pull/14
+- Add syno share list --recycle to show what the recycle bins hold by @babarot in https://github.com/babarot/syno/pull/15
+- Add syno wake to start the NAS with Wake-on-LAN by @babarot in https://github.com/babarot/syno/pull/16
+- Add syno container start, stop and restart by @babarot in https://github.com/babarot/syno/pull/18
+- Add syno container list --usage for CPU and memory by @babarot in https://github.com/babarot/syno/pull/19
+
 ## [0.2.0](https://github.com/babarot/syno/compare/0.1.0...0.2.0) - 2026-10-09
 ### New Features
 - Add syno container list and a containers check to doctor by @babarot in https://github.com/babarot/syno/pull/2
