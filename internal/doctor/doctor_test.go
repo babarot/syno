@@ -11,16 +11,55 @@ import (
 )
 
 type fakeSource struct {
-	sys    *dsm.SystemInfo
-	st     *dsm.Storage
-	err    error
-	stHits int
+	sys     *dsm.SystemInfo
+	st      *dsm.Storage
+	reboot  bool
+	upgrade *dsm.UpgradeCheck
+	scan    *dsm.SecurityScan
+	certs   []dsm.Certificate
+	err     error
+	stHits  int
 }
 
 func (f *fakeSource) SystemInfo(context.Context) (*dsm.SystemInfo, error) { return f.sys, f.err }
 func (f *fakeSource) Storage(context.Context) (*dsm.Storage, error) {
 	f.stHits++
 	return f.st, f.err
+}
+func (f *fakeSource) NeedReboot(context.Context) (bool, error) { return f.reboot, f.err }
+func (f *fakeSource) CheckUpgrade(context.Context) (*dsm.UpgradeCheck, error) {
+	if f.upgrade == nil {
+		return &dsm.UpgradeCheck{}, f.err
+	}
+	return f.upgrade, f.err
+}
+func (f *fakeSource) SecurityScan(context.Context) (*dsm.SecurityScan, error) {
+	if f.scan == nil {
+		return healthyScan(), f.err
+	}
+	return f.scan, f.err
+}
+func (f *fakeSource) Certificates(context.Context) ([]dsm.Certificate, error) { return f.certs, f.err }
+
+func healthyScan() *dsm.SecurityScan {
+	var s dsm.SecurityScan
+	mustUnmarshal(`{
+		"sysStatus": "safe",
+		"lastScanTime": "`+itoa(now.Add(-3*24*time.Hour).Unix())+`",
+		"items": {
+			"malware": {"category": "malware", "failSeverity": "safe", "fail": {"danger": 0, "risk": 0, "warning": 0, "outOfDate": 0, "info": 0}},
+			"network": {"category": "network", "failSeverity": "safe", "fail": {"danger": 0, "risk": 0, "warning": 0, "outOfDate": 0, "info": 0}}
+		}
+	}`, &s)
+	return &s
+}
+
+func cert(desc string, validTill time.Time, renewable bool, services int) dsm.Certificate {
+	c := dsm.Certificate{Desc: desc, Renewable: renewable, ValidTill: validTill.UTC().Format("Jan _2 15:04:05 2006 GMT")}
+	for range services {
+		c.Services = append(c.Services, json.RawMessage(`{}`))
+	}
+	return c
 }
 
 var now = time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
@@ -60,8 +99,18 @@ func run(st *dsm.Storage, sys *dsm.SystemInfo) map[string]Result {
 	if sys == nil {
 		sys = &dsm.SystemInfo{SysTemp: 45}
 	}
+	return runSource(&fakeSource{sys: sys, st: st})
+}
+
+func runSource(src *fakeSource) map[string]Result {
+	if src.sys == nil {
+		src.sys = &dsm.SystemInfo{SysTemp: 45}
+	}
+	if src.st == nil {
+		src.st = healthyStorage()
+	}
 	out := map[string]Result{}
-	for _, r := range Run(context.Background(), &fakeSource{sys: sys, st: st}, DefaultThresholds(), now) {
+	for _, r := range Run(context.Background(), src, DefaultThresholds(), now) {
 		out[r.Check] = r
 	}
 	return out
@@ -212,6 +261,65 @@ func TestExitCode(t *testing.T) {
 		}
 		if got := ExitCode(results); got != tt.want {
 			t.Errorf("%v: got %d, want %d", tt.levels, got, tt.want)
+		}
+	}
+}
+
+func TestReboot(t *testing.T) {
+	if r := runSource(&fakeSource{reboot: true})["reboot"]; r.Level != Warn {
+		t.Errorf("got %s %q", r.Level, r.Summary)
+	}
+}
+
+func TestDSMUpdate(t *testing.T) {
+	var up dsm.UpgradeCheck
+	mustUnmarshal(`{"update": {"available": true, "version": "DSM 7.9.9-99999", "version_details": {"isSecurityVersion": true}}}`, &up)
+	r := runSource(&fakeSource{upgrade: &up})["dsm-update"]
+	if r.Level != Warn || r.Summary != "DSM 7.9.9-99999 is available (security update)" {
+		t.Errorf("got %s %q", r.Level, r.Summary)
+	}
+}
+
+func TestSecurityAdvisor(t *testing.T) {
+	if r := runSource(&fakeSource{})["security-advisor"]; r.Level != OK || r.Summary != "no findings, last scan 3 days ago" {
+		t.Errorf("healthy: got %s %q", r.Level, r.Summary)
+	}
+
+	scan := healthyScan()
+	item := scan.Items["network"]
+	item.FailSeverity = "risk"
+	item.Fail = map[string]int{"risk": 2, "warning": 1}
+	scan.Items["network"] = item
+	if r := runSource(&fakeSource{scan: scan})["security-advisor"]; r.Level != Fail || r.Summary != "network: 2 risk, 1 warning" {
+		t.Errorf("risk: got %s %q", r.Level, r.Summary)
+	}
+
+	scan = healthyScan()
+	scan.LastScanTime = dsm.Num(now.Add(-40 * 24 * time.Hour).Unix())
+	if r := runSource(&fakeSource{scan: scan})["security-advisor"]; r.Level != Warn || r.Summary != "last scan was 40 days ago" {
+		t.Errorf("old scan: got %s %q", r.Level, r.Summary)
+	}
+}
+
+func TestCertificates(t *testing.T) {
+	day := 24 * time.Hour
+	tests := []struct {
+		name string
+		cert dsm.Certificate
+		want Level
+		sum  string
+	}{
+		{"valid", cert("web", now.Add(60*day), false, 1), OK, "1 certificate valid, next expiry in 60 days"},
+		{"expired and used", cert("web", now.Add(-5*day), false, 2), Fail, `certificate "web" expired 5 days ago and is used by 2 services`},
+		{"expired and unused", cert("old", now.Add(-5*day), false, 0), Warn, `certificate "old" expired 5 days ago (not used by any service)`},
+		{"manual expiring", cert("web", now.Add(20*day), false, 1), Warn, `certificate "web" expires in 20 days`},
+		{"renewable expiring later", cert("le", now.Add(20*day), true, 1), OK, "1 certificate valid, next expiry in 20 days"},
+		{"renewable expiring soon", cert("le", now.Add(10*day), true, 1), Warn, `certificate "le" expires in 10 days, automatic renewal may be failing`},
+	}
+	for _, tt := range tests {
+		r := runSource(&fakeSource{certs: []dsm.Certificate{tt.cert}})["certificates"]
+		if r.Level != tt.want || r.Summary != tt.sum {
+			t.Errorf("%s: got %s %q, want %s %q", tt.name, r.Level, r.Summary, tt.want, tt.sum)
 		}
 	}
 }

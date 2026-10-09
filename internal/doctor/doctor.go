@@ -54,6 +54,15 @@ type Thresholds struct {
 	DiskTempWarn    float64 // Celsius
 	DiskTempFail    float64 // Celsius
 	ScrubAgeWarn    time.Duration
+	// SecurityScanAgeWarn is how old the last Security Advisor scan may be.
+	SecurityScanAgeWarn time.Duration
+	// CertExpiryWarn is how early to warn about a certificate DSM does not
+	// renew by itself.
+	CertExpiryWarn time.Duration
+	// RenewableCertExpiryWarn is the same for certificates DSM renews.
+	// Let's Encrypt certificates are renewed about 30 days before expiry,
+	// so one still close to expiry means the renewal is failing.
+	RenewableCertExpiryWarn time.Duration
 }
 
 func DefaultThresholds() Thresholds {
@@ -63,6 +72,10 @@ func DefaultThresholds() Thresholds {
 		DiskTempWarn:    50,
 		DiskTempFail:    60,
 		ScrubAgeWarn:    90 * 24 * time.Hour,
+
+		SecurityScanAgeWarn:     30 * 24 * time.Hour,
+		CertExpiryWarn:          30 * 24 * time.Hour,
+		RenewableCertExpiryWarn: 14 * 24 * time.Hour,
 	}
 }
 
@@ -70,6 +83,10 @@ func DefaultThresholds() Thresholds {
 type Source interface {
 	SystemInfo(ctx context.Context) (*dsm.SystemInfo, error)
 	Storage(ctx context.Context) (*dsm.Storage, error)
+	NeedReboot(ctx context.Context) (bool, error)
+	CheckUpgrade(ctx context.Context) (*dsm.UpgradeCheck, error)
+	SecurityScan(ctx context.Context) (*dsm.SecurityScan, error)
+	Certificates(ctx context.Context) ([]dsm.Certificate, error)
 }
 
 // Env is passed to every check.
@@ -93,6 +110,10 @@ var Checks = []Check{
 	{"disk-temperature", checkDiskTemperature},
 	{"scrubbing", checkScrubbing},
 	{"system-temperature", checkSystemTemperature},
+	{"reboot", checkReboot},
+	{"dsm-update", checkDSMUpdate},
+	{"security-advisor", checkSecurityAdvisor},
+	{"certificates", checkCertificates},
 }
 
 // Run runs every check. Data is fetched once and shared between checks.
@@ -196,8 +217,10 @@ func isSpaceOnly(p dsm.StoragePool) bool {
 	return p.SpaceStatus.Status == "pool_normal" && strings.HasPrefix(p.SpaceStatus.Detail, "fs_")
 }
 
+// cachedSource caches the APIs several checks share. The others pass
+// through to the embedded Source.
 type cachedSource struct {
-	src Source
+	Source
 
 	sysOnce sync.Once
 	sys     *dsm.SystemInfo
@@ -208,14 +231,14 @@ type cachedSource struct {
 	stErr  error
 }
 
-func newCachedSource(src Source) *cachedSource { return &cachedSource{src: src} }
+func newCachedSource(src Source) *cachedSource { return &cachedSource{Source: src} }
 
 func (c *cachedSource) SystemInfo(ctx context.Context) (*dsm.SystemInfo, error) {
-	c.sysOnce.Do(func() { c.sys, c.sysErr = c.src.SystemInfo(ctx) })
+	c.sysOnce.Do(func() { c.sys, c.sysErr = c.Source.SystemInfo(ctx) })
 	return c.sys, c.sysErr
 }
 
 func (c *cachedSource) Storage(ctx context.Context) (*dsm.Storage, error) {
-	c.stOnce.Do(func() { c.st, c.stErr = c.src.Storage(ctx) })
+	c.stOnce.Do(func() { c.st, c.stErr = c.Source.Storage(ctx) })
 	return c.st, c.stErr
 }
