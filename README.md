@@ -200,6 +200,15 @@ photo    /volume1   96.5 GB
 docker   /volume1   0 B        hidden
 ```
 
+`--recycle` also sums what each recycle bin holds, the space emptying it would free. The NAS sums the files one by one, about 5,000 a second, so a recycle bin with many files takes a while; syno gives up after 2 minutes.
+
+```console
+$ syno share list --recycle
+NAME     VOLUME     USED       RECYCLE BIN   FLAGS
+media    /volume1   8.4 TB     150.2 GB      recycle-bin
+homes    /volume1   120.0 GB   -
+```
+
 ```bash
 syno share list --json
 ```
@@ -226,7 +235,7 @@ Runs an MCP server over stdio, so that an AI assistant such as Claude Code can a
 | `syno_doctor` | `syno doctor --json`, with `skip` and `only` |
 | `syno_containers` | `syno container list --json`, with `running` and `project` |
 | `syno_packages` | `syno package list --json`, with `outdated` |
-| `syno_shares` | `syno share list --json` |
+| `syno_shares` | `syno share list --json`, with `recycle` |
 | `syno_api_list` | `syno api --list --json`, with `filter`, under `apis` next to `host` |
 | `syno_api` | `syno api`, under `data` next to `host`; only with `--allow-api` |
 

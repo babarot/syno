@@ -66,7 +66,7 @@ type backend interface {
 	Doctor(ctx context.Context, skip, only []string) (any, error)
 	Containers(ctx context.Context, runningOnly bool, project string) (any, error)
 	Packages(ctx context.Context, outdated bool) (any, error)
-	Shares(ctx context.Context) (any, error)
+	Shares(ctx context.Context, recycle bool) (any, error)
 	APIList(ctx context.Context, filter string) (any, error)
 	API(ctx context.Context, api, method string, version int, params url.Values) (any, error)
 }
@@ -93,8 +93,8 @@ func (nasBackend) Packages(ctx context.Context, outdated bool) (any, error) {
 	return listPackages(ctx, outdated)
 }
 
-func (nasBackend) Shares(ctx context.Context) (any, error) {
-	return listShares(ctx)
+func (nasBackend) Shares(ctx context.Context, recycle bool) (any, error) {
+	return listShares(ctx, recycle)
 }
 
 func (nasBackend) APIList(ctx context.Context, filter string) (any, error) {
@@ -114,6 +114,9 @@ type (
 	containersInput struct {
 		Running bool   `json:"running,omitempty" jsonschema:"List only running containers"`
 		Project string `json:"project,omitempty" jsonschema:"List only the containers of this Docker Compose project"`
+	}
+	sharesInput struct {
+		Recycle bool `json:"recycle,omitempty" jsonschema:"Also sum what each recycle bin holds, the space emptying it would free. Takes a while for recycle bins with many files"`
 	}
 	packagesInput struct {
 		Outdated bool `json:"outdated,omitempty" jsonschema:"List only the packages with an update"`
@@ -185,10 +188,10 @@ func newMCPServer(b backend, allowAPI bool) *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "syno_shares",
-		Description: "List the shared folders of the Synology NAS with the space each uses in bytes, the largest first, and whether it is hidden, encrypted, read-only, on USB or has a recycle bin. Use this to find what fills a volume.",
+		Description: "List the shared folders of the Synology NAS with the space each uses in bytes, the largest first, and whether it is hidden, encrypted, read-only, on USB or has a recycle bin. Use this to find what fills a volume, with recycle to see what emptying the recycle bins would free.",
 		Annotations: readOnly,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, any, error) {
-		out, err := b.Shares(ctx)
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in sharesInput) (*mcp.CallToolResult, any, error) {
+		out, err := b.Shares(ctx, in.Recycle)
 		return nil, out, err
 	})
 

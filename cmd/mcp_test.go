@@ -43,8 +43,8 @@ func (f *fakeBackend) Packages(_ context.Context, outdated bool) (any, error) {
 	return &packageList{Host: testHost, Packages: []packageRow{{ID: "web", Version: "1.2.0-0100", Latest: "1.3.0-0110", InStore: true}}}, f.err
 }
 
-func (f *fakeBackend) Shares(context.Context) (any, error) {
-	f.args = nil
+func (f *fakeBackend) Shares(_ context.Context, recycle bool) (any, error) {
+	f.args = []any{recycle}
 	return &shareList{Host: testHost, Shares: []shareRow{{Name: "media", Volume: "/volume1", UsedBytes: 1 << 40, RecycleBin: true}}}, f.err
 }
 
@@ -137,7 +137,8 @@ func TestMCPCalls(t *testing.T) {
 		{"syno_packages", map[string]any{"outdated": true}, []any{true},
 			`{"host":"` + testHost + `","packages":[{"id":"web","name":"","version":"1.2.0-0100","latest":"1.3.0-0110","security":false,"in_store":true,"status":""}]}`},
 		{"syno_packages", nil, []any{false}, ""},
-		{"syno_shares", nil, nil,
+		{"syno_shares", map[string]any{"recycle": true}, []any{true}, ""},
+		{"syno_shares", nil, []any{false},
 			`{"host":"` + testHost + `","shares":[{"name":"media","volume":"/volume1","used_bytes":1099511627776,"hidden":false,"encrypted":false,"read_only":false,"usb":false,"recycle_bin":true}]}`},
 		{"syno_api_list", map[string]any{"filter": "share"}, []any{"share"}, `{"host":"` + testHost + `","apis":{"SYNO.Core.Share":{"path":"entry.cgi","minVersion":1,"maxVersion":1,"requestFormat":"JSON"}}}`},
 		{"syno_api", map[string]any{"api": "SYNO.Core.Share", "method": "list", "params": map[string]any{"additional": `["share_quota"]`}},
