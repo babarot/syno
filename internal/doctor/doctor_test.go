@@ -110,7 +110,7 @@ func runSource(src *fakeSource) map[string]Result {
 		src.st = healthyStorage()
 	}
 	out := map[string]Result{}
-	for _, r := range Run(context.Background(), src, DefaultThresholds(), now) {
+	for _, r := range Run(context.Background(), src, Options{Thresholds: DefaultThresholds(), Now: now}) {
 		out[r.Check] = r
 	}
 	return out
@@ -224,7 +224,7 @@ func TestSystemTemperature(t *testing.T) {
 
 func TestAPIErrorIsUnknown(t *testing.T) {
 	src := &fakeSource{err: errors.New("permission denied")}
-	results := Run(context.Background(), src, DefaultThresholds(), now)
+	results := Run(context.Background(), src, Options{Thresholds: DefaultThresholds(), Now: now})
 	for _, r := range results {
 		if r.Level != Unknown {
 			t.Errorf("%s: got %s, want unknown", r.Check, r.Level)
@@ -237,7 +237,7 @@ func TestAPIErrorIsUnknown(t *testing.T) {
 
 func TestStorageIsFetchedOnce(t *testing.T) {
 	src := &fakeSource{sys: &dsm.SystemInfo{}, st: healthyStorage()}
-	Run(context.Background(), src, DefaultThresholds(), now)
+	Run(context.Background(), src, Options{Thresholds: DefaultThresholds(), Now: now})
 	if src.stHits != 1 {
 		t.Errorf("Storage called %d times, want 1", src.stHits)
 	}
@@ -320,6 +320,38 @@ func TestCertificates(t *testing.T) {
 		r := runSource(&fakeSource{certs: []dsm.Certificate{tt.cert}})["certificates"]
 		if r.Level != tt.want || r.Summary != tt.sum {
 			t.Errorf("%s: got %s %q, want %s %q", tt.name, r.Level, r.Summary, tt.want, tt.sum)
+		}
+	}
+}
+
+func TestSkip(t *testing.T) {
+	st := healthyStorage()
+	st.Volumes[0].SummaryStatus = "danger"
+	src := &fakeSource{sys: &dsm.SystemInfo{}, st: st}
+	results := Run(context.Background(), src, Options{Thresholds: DefaultThresholds(), Now: now, Skip: []string{"volumes"}})
+
+	byName := map[string]Result{}
+	for _, r := range results {
+		byName[r.Check] = r
+	}
+	if r := byName["volumes"]; r.Level != Skip || r.Summary != "skipped" {
+		t.Errorf("volumes: got %s %q, want skip", r.Level, r.Summary)
+	}
+	if len(results) != len(Checks) {
+		t.Errorf("got %d results, want every check listed", len(results))
+	}
+	if got := ExitCode(results); got != 0 {
+		t.Errorf("exit code = %d, want 0 with the failing check skipped", got)
+	}
+}
+
+// A missing API is unusual for the core APIs the checks use, so it must
+// not be hidden as a skip.
+func TestMissingAPIIsUnknown(t *testing.T) {
+	src := &fakeSource{err: &dsm.APIError{API: "SYNO.Storage.CGI.Storage", Method: "load_info", Code: 102}}
+	for _, r := range Run(context.Background(), src, Options{Thresholds: DefaultThresholds(), Now: now}) {
+		if r.Level != Unknown {
+			t.Errorf("%s: got %s, want unknown", r.Check, r.Level)
 		}
 	}
 }

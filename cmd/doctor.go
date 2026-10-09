@@ -39,7 +39,7 @@ used from cron or a monitoring system:
 			}
 			defer client.Logout(ctx)
 
-			results := doctor.Run(ctx, client, doctor.DefaultThresholds(), time.Now())
+			results := doctor.Run(ctx, client, doctor.Options{Thresholds: doctor.DefaultThresholds(), Now: time.Now()})
 			code := doctor.ExitCode(results)
 
 			if asJSON {
@@ -80,6 +80,7 @@ var levelMarks = map[doctor.Level]struct {
 	doctor.Warn:    {"!", "33"},
 	doctor.Fail:    {"✗", "31"},
 	doctor.Unknown: {"?", "35"},
+	doctor.Skip:    {"-", "90"},
 }
 
 func printResults(out io.Writer, results []doctor.Result, color bool) {
@@ -100,7 +101,7 @@ func printResults(out io.Writer, results []doctor.Result, color bool) {
 	w.Flush()
 
 	var parts []string
-	for _, l := range []doctor.Level{doctor.OK, doctor.Warn, doctor.Fail, doctor.Unknown} {
+	for _, l := range []doctor.Level{doctor.OK, doctor.Warn, doctor.Fail, doctor.Unknown, doctor.Skip} {
 		if n := counts[l]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, l))
 		}

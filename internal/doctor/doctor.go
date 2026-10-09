@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,9 @@ const (
 	// Unknown means the check could not run, for example because an API
 	// call failed.
 	Unknown
+	// Skip means the check was turned off. Like OK, it does not change the
+	// exit status.
+	Skip
 )
 
 func (l Level) String() string {
@@ -32,6 +36,8 @@ func (l Level) String() string {
 		return "warn"
 	case Fail:
 		return "fail"
+	case Skip:
+		return "skip"
 	default:
 		return "unknown"
 	}
@@ -116,11 +122,23 @@ var Checks = []Check{
 	{"certificates", checkCertificates},
 }
 
-// Run runs every check. Data is fetched once and shared between checks.
-func Run(ctx context.Context, src Source, th Thresholds, now time.Time) []Result {
-	env := &Env{Source: newCachedSource(src), Thresholds: th, Now: now}
+// Options controls a run.
+type Options struct {
+	Thresholds Thresholds
+	Now        time.Time
+	// Skip names checks to report as skipped without running them.
+	Skip []string
+}
+
+// Run runs the checks. Data is fetched once and shared between checks.
+func Run(ctx context.Context, src Source, opts Options) []Result {
+	env := &Env{Source: newCachedSource(src), Thresholds: opts.Thresholds, Now: opts.Now}
 	results := make([]Result, 0, len(Checks))
 	for _, c := range Checks {
+		if slices.Contains(opts.Skip, c.Name) {
+			results = append(results, Result{Check: c.Name, Level: Skip, Summary: "skipped"})
+			continue
+		}
 		r, err := c.Run(ctx, env)
 		if err != nil {
 			r = Result{Level: Unknown, Summary: err.Error()}
