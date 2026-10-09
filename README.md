@@ -32,7 +32,7 @@ syno is not affiliated with or endorsed by Synology Inc. Synology and DSM are tr
 
 ## Install
 
-Binaries for macOS and Linux (arm64 and x86_64) are on the [releases page](https://github.com/babarot/syno/releases).
+Archives for macOS and Linux (arm64 and x86_64) are on the [releases page](https://github.com/babarot/syno/releases).
 
 With Go:
 
