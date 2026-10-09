@@ -26,6 +26,7 @@ func NewRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newAPICmd(),
 		newMCPCmd(),
+		newDashboardCmd(),
 		newContainerCmd(),
 		newPackageCmd(),
 		newShareCmd(),

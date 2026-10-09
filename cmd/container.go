@@ -88,6 +88,10 @@ type containerListOptions struct {
 	Usage       bool
 }
 
+// errNoContainerManager is what the container commands answer on a NAS
+// without the Container Manager package.
+var errNoContainerManager = errors.New("the NAS does not have Container Manager installed")
+
 // usageInterval is the time between the two samples CPU usage needs.
 var usageInterval = time.Second
 
@@ -105,7 +109,7 @@ func listContainers(ctx context.Context, opts containerListOptions) (*containerL
 func readContainers(ctx context.Context, client *dsm.Client, opts containerListOptions) (*containerList, error) {
 	cs, err := client.Containers(ctx)
 	if dsm.IsNoAPI(err, dsm.ContainerAPI) {
-		return nil, errors.New("the NAS does not have Container Manager installed")
+		return nil, errNoContainerManager
 	}
 	if err != nil {
 		return nil, err
@@ -167,6 +171,8 @@ type containerRow struct {
 	Project string `json:"project,omitempty"`
 	Image   string `json:"image"`
 	Status  string `json:"status"`
+	// Error is why Docker could not start the container, if it failed to.
+	Error string `json:"error,omitempty"`
 	// CPUPercent and MemoryBytes are set with --usage for running
 	// containers. 100% CPU is one core.
 	CPUPercent  *float64 `json:"cpu_percent,omitempty"`
@@ -193,6 +199,7 @@ func containerRows(cs []dsm.Container, runningOnly bool, project string) []conta
 			Project: c.Project(),
 			Image:   c.Image,
 			Status:  c.UpStatus,
+			Error:   c.State.Error,
 		})
 	}
 	return rows

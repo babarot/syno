@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>syno dashboard</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="logo">syno</span>
+    <div class="nas" id="nas"></div>
+    <span class="spacer"></span>
+    <span class="meta" id="host"></span>
+    <button class="iconbtn" id="theme" title="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main>
+  <section class="panel s12" id="p-health" data-panel="doctor">
+    <div class="ph"><h2>Health</h2><span class="src"></span><button class="iconbtn" data-refresh="doctor">Check now</button></div>
+    <div class="err"></div>
+    <div class="hero">
+      <div id="health-ring"></div>
+      <div><div class="verdict" id="verdict"></div><div class="sub" id="verdict-sub"></div></div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="panel s4" id="p-system" data-panel="system">
+    <div class="ph"><h2>System</h2><span class="src"></span></div>
+    <div class="err"></div>
+    <div class="gauges" id="gauges"></div>
+    <svg class="area" id="area" viewBox="0 0 300 70" preserveAspectRatio="none"></svg>
+    <div class="legend"><span><i class="sw cpu"></i>CPU</span><span><i class="sw mem"></i>Memory</span><span class="c-muted">last 2 minutes, kept in the page only</span></div>
+    <dl class="kvs" id="sys"></dl>
+  </section>
+
+  <section class="panel s8" id="p-storage" data-panel="storage">
+    <div class="ph"><h2>Storage</h2><span class="src"></span></div>
+    <div class="err"></div>
+    <div id="volumes"></div>
+  </section>
+
+  <section class="panel s12" id="p-disks" data-panel="storage">
+    <div class="ph"><h2>Disks</h2><span class="src"></span></div>
+    <div class="err"></div>
+    <div class="bays" id="bays"></div>
+    <div class="note">Free space belongs to volumes, not to single disks: in SHR and RAID the disks of a pool hold one volume together. DSM estimates the remaining life mostly for SSDs; for the disks it does not, the card says so instead of showing 0%.</div>
+  </section>
+
+  <section class="panel s12" id="p-containers" data-panel="containers">
+    <div class="ph"><h2>Containers</h2><span class="src"></span></div>
+    <div class="err"></div>
+    <div class="ctrs" id="ctrs"></div>
+  </section>
+</main>
+
+<footer>
+  Served by <code>syno dashboard</code> on this machine only. Each panel asks the NAS at its own pace, shown at its top right, and only while this page is open.
+</footer>
+</body>
+</html>

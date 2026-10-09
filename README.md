@@ -51,6 +51,7 @@ syno discover   # find the NAS on the local network
 syno login      # log in once and save it as a profile
 syno status     # system, pools, volumes and disks
 syno doctor     # health checks, with an exit status for monitoring
+syno dashboard  # the same on a web page, refreshed while it is open
 ```
 
 Storage information needs an account in the administrators group.
@@ -246,6 +247,18 @@ syno wake --mac 00:11:32:12:34:56
 
 Wake-on-LAN has to be on in DSM (Control Panel > Hardware & Power); `syno login` says so when it is off. The packet does not cross routers or VPNs, so run `syno wake` on the same network as the NAS.
 
+### dashboard
+
+Serves a web page on `127.0.0.1` with the health checks, CPU and memory, storage, disks and containers of the NAS, each refreshed at its own pace: CPU and memory every 5 seconds, containers every 30 seconds, storage every minute and the checks every 5 minutes. The page only reads. `syno dash` is short for it.
+
+```console
+$ syno dashboard
+Dashboard: http://127.0.0.1:52817/?token=3f9c...
+Stop with Ctrl-C.
+```
+
+It opens the URL in a browser unless `--no-open` is given, and listens on any free port unless `--port` is given. The page shows every profile, one tab each, or only the one given by `--profile`. The NAS is asked only while a page is open and in front, with one session per profile, so several open pages cost no more than one. The checks of DSM and package updates are left out, since they make the NAS ask Synology's servers; `syno doctor` runs them.
+
 ### api
 
 Calls any DSM Web API with the saved account and prints the `data` field of the response as JSON. DSM has hundreds of APIs and few are documented, so this is the way to look around. The path and the latest version of each API come from `SYNO.API.Info`.
@@ -334,6 +347,7 @@ Unknown keys are errors, so a typo does not go unnoticed. `--skip` adds to `doct
 - The server certificate is verified. A NAS often has a certificate the system does not trust, such as DSM's self-signed one, or one for a domain name while you connect by IP address. In that case `syno login` shows the certificate and asks whether to pin its public key, as SSH does with host keys. Later commands then accept only that key, and fail if it changes. `--trust-pin` accepts a known pin without asking.
 - To avoid pinning, connect with a host name that has a valid certificate, for example `syno login --host https://nas.example.com:5001`.
 - `syno login` refuses plain HTTP unless `--allow-http` is given, since the password would be sent in clear text.
+- `syno dashboard` listens on `127.0.0.1` only, and answers only requests for that host and port, which stops pages of other sites from reaching it through DNS rebinding. The URL it prints carries a random token, which the page trades for an `HttpOnly`, `SameSite=Strict` cookie, so a user or program on the machine that has not seen the URL cannot read the page. The page offers no way to call other DSM APIs, and shows no serial numbers.
 - `discover` and `api --list` do not verify certificates. They only read `SYNO.API.Info`, which needs no login, and send no credentials.
 
 ## Compatibility
