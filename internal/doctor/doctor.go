@@ -121,6 +121,8 @@ type Source interface {
 	SecurityScan(ctx context.Context) (*dsm.SecurityScan, error)
 	Certificates(ctx context.Context) ([]dsm.Certificate, error)
 	Containers(ctx context.Context) ([]dsm.Container, error)
+	Packages(ctx context.Context) ([]dsm.Package, error)
+	StorePackages(ctx context.Context) ([]dsm.StorePackage, error)
 }
 
 // Env is passed to every check.
@@ -147,6 +149,7 @@ var Checks = []Check{
 	{"system-temperature", "DSM does not warn about the system temperature", checkSystemTemperature},
 	{"reboot", "No reboot is pending to finish an update", checkReboot},
 	{"dsm-update", "DSM is up to date (the NAS asks Synology's update server)", checkDSMUpdate},
+	{"package-update", "No package has a security update in Package Center", checkPackageUpdate},
 	{"security-advisor", "Security Advisor has no findings and scanned recently", checkSecurityAdvisor},
 	{"certificates", "Certificates are valid and not about to expire", checkCertificates},
 	{"containers", "Running containers are healthy and none keeps restarting (skipped without Container Manager)", checkContainers},

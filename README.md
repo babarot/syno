@@ -130,6 +130,7 @@ Runs health checks and reports each as ok, warn, fail, unknown or skip. `syno do
 | `system-temperature` | DSM's own temperature warning |
 | `reboot` | A reboot pending to finish an update |
 | `dsm-update` | A newer DSM (the NAS asks Synology's update server) |
+| `package-update` | Security updates of the installed packages in Package Center. Other updates are only counted |
 | `security-advisor` | Findings of the Security Advisor and the age of its last scan |
 | `certificates` | Broken, expired and expiring certificates |
 | `containers` | Running containers that are unhealthy or keep restarting. Stopped ones are only counted. Skipped without Container Manager |
@@ -164,6 +165,24 @@ proxy         running   -           -         nginx:latest            Up 5 days
 ```bash
 syno container list --running
 syno container list --project web --json
+```
+
+### package
+
+Lists the installed packages with the latest version in Package Center. LATEST shows the newer version when there is one, marked `(security)` for a security update, `-` when the package is up to date, and `?` when Package Center does not know the package, as with third-party ones. Nothing is updated.
+
+```console
+$ syno package list
+ID            NAME            VERSION        LATEST                     STATUS
+FileStation   File Station    1.4.2-1575     -                          running
+git           Git             2.53.0-40      ?                          running
+MariaDB10     MariaDB 10      10.11.6-1369   10.11.11-1551 (security)   stop
+WebStation    Web Station     4.2.3-0522     4.3.1-0530                 running
+```
+
+```bash
+syno package list --outdated
+syno package list --json
 ```
 
 ### api
