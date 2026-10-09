@@ -53,11 +53,11 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 			ctx := cmd.Context()
 
 			if list {
-				base, err := listHost(ctx, host)
+				client, err := listClient(ctx, host)
 				if err != nil {
 					return err
 				}
-				infos, err := dsm.New(base).APIInfo(ctx, "all")
+				infos, err := client.APIInfo(ctx, "all")
 				if err != nil {
 					return err
 				}
@@ -181,15 +181,20 @@ func printJSON(data json.RawMessage) error {
 	return err
 }
 
-// listHost picks the DSM to ask for --list, which needs no login: --host,
-// then the selected profile, then discovery.
-func listHost(ctx context.Context, host string) (string, error) {
+// listClient picks the DSM to ask for --list, which needs no login:
+// --host, then the selected profile, then discovery. Only the profile comes
+// with a way to trust its certificate; the others are not verified, which
+// is fine because the call sends no credentials.
+func listClient(ctx context.Context, host string) (*dsm.Client, error) {
 	if host != "" {
-		return host, nil
+		return dsm.NewInsecure(host), nil
 	}
 	if _, p, err := selectProfile(); err == nil {
-		return p.URL, nil
+		return dsm.New(p.URL, p.TLS.Pin), nil
 	}
 	u, _, err := discoverOne(ctx)
-	return u, err
+	if err != nil {
+		return nil, err
+	}
+	return dsm.NewInsecure(u), nil
 }

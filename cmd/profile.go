@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -31,14 +32,21 @@ func newProfileCmd() *cobra.Command {
 					return nil
 				}
 				w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-				fmt.Fprintln(w, "\tNAME\tURL\tUSER")
+				fmt.Fprintln(w, "\tNAME\tURL\tUSER\tTLS")
 				for _, name := range cfg.Names() {
 					p := cfg.Profiles[name]
 					mark := ""
 					if name == cfg.Current {
 						mark = "*"
 					}
-					fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", mark, name, p.URL, p.User)
+					tls := "system"
+					switch {
+					case p.TLS.Pin != "":
+						tls = "pinned"
+					case strings.HasPrefix(p.URL, "http://"):
+						tls = "none"
+					}
+					fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", mark, name, p.URL, p.User, tls)
 				}
 				return w.Flush()
 			},

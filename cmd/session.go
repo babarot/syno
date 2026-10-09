@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/url"
@@ -97,8 +98,12 @@ func connect(ctx context.Context) (*dsm.Client, error) {
 		return nil, err
 	}
 
-	c := dsm.New(p.URL)
+	c := dsm.New(p.URL, p.TLS.Pin)
 	if _, err := c.Login(ctx, dsm.LoginOptions{User: p.User, Password: password, DeviceID: deviceID}); err != nil {
+		var certErr *tls.CertificateVerificationError
+		if errors.As(err, &certErr) {
+			return nil, fmt.Errorf("%w; run `syno login` to check the certificate and pin it", err)
+		}
 		return nil, err
 	}
 	return c, nil

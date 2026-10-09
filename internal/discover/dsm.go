@@ -13,7 +13,8 @@ import (
 var httpClient = &http.Client{
 	Timeout: 2 * time.Second,
 	Transport: &http.Transport{
-		// DSM ships with a self-signed certificate by default.
+		// Not verified: DSM often has a self-signed certificate, and the
+		// probe only reads SYNO.API.Info, sending no credentials.
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	},
 }

@@ -20,6 +20,7 @@ const discoverTimeout = 3 * time.Second
 
 func newLoginCmd() *cobra.Command {
 	var host, user, otp string
+	var trust trustOptions
 
 	c := &cobra.Command{
 		Use:   "login",
@@ -30,6 +31,11 @@ a profile in ~/.config/syno/config.yaml and the password to the OS keyring.
 Without --host, the NAS is found on the local network. Without --profile, the
 profile is named after the NAS, and an existing profile for the same URL and
 user is updated. The first profile becomes the current one.
+
+Before the password is sent, the server certificate is checked. When the
+system does not trust it, as with DSM's self-signed certificate or access by
+IP address, its details are shown and you are asked whether to pin its public
+key. Later commands then accept only that key.
 
 Storage information needs an account in the administrators group. When the
 account uses 2FA, you are asked for a code once and the device token DSM
@@ -74,12 +80,21 @@ issues is saved so that later commands do not ask again.`,
 				}
 			}
 
+			// Settle the certificate before the password leaves this machine.
+			if existing := cfg.Profiles[name]; existing != nil && existing.URL == host {
+				trust.KnownPin = existing.TLS.Pin
+			}
+			pin, err := trustServer(ctx, host, trust)
+			if err != nil {
+				return err
+			}
+
 			password, err := prompt(fmt.Sprintf("Password for %s@%s: ", user, host), true)
 			if err != nil {
 				return err
 			}
 
-			client := dsm.New(host)
+			client := dsm.New(host, pin)
 			opts := dsm.LoginOptions{User: user, Password: password, OTP: otp}
 			deviceID, err := client.Login(ctx, opts)
 			if dsm.IsOTPRequired(err) && otp == "" {
@@ -101,7 +116,7 @@ issues is saved so that later commands do not ask again.`,
 					return err
 				}
 			}
-			cfg.Set(name, &config.Profile{URL: host, User: user})
+			cfg.Set(name, &config.Profile{URL: host, User: user, TLS: config.TLS{Pin: pin}})
 			if err := cfg.Save(); err != nil {
 				return err
 			}
@@ -113,6 +128,8 @@ issues is saved so that later commands do not ask again.`,
 	c.Flags().StringVar(&host, "host", "", "DSM URL, e.g. https://192.168.1.10:5001 (default: discover)")
 	c.Flags().StringVarP(&user, "user", "u", "", "DSM account name")
 	c.Flags().StringVar(&otp, "otp", "", "2FA code (asked interactively when needed)")
+	c.Flags().StringVar(&trust.TrustPin, "trust-pin", "", "Trust a certificate whose public key has this pin (sha256/...) without asking")
+	c.Flags().BoolVar(&trust.AllowHTTP, "allow-http", false, "Allow logging in over plain HTTP, sending the password in clear text")
 
 	return c
 }

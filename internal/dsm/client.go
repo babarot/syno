@@ -22,15 +22,32 @@ type Client struct {
 	sid  string
 }
 
-func New(base string) *Client {
+// New returns a client that verifies the server certificate. With an empty
+// pin the certificate must be trusted by the system and match the host
+// name. With a pin ("sha256/<base64>", see Pin) the server's public key must
+// match it instead, which is how self-signed certificates and access by IP
+// address are trusted.
+func New(base, pin string) *Client {
+	cfg := &tls.Config{}
+	if pin != "" {
+		cfg = pinnedConfig(base, pin)
+	}
+	return newClient(base, cfg)
+}
+
+// NewInsecure returns a client that does not verify the server certificate.
+// Use it only for calls that send no credentials and whose answers do no
+// harm if forged, such as SYNO.API.Info.
+func NewInsecure(base string) *Client {
+	return newClient(base, &tls.Config{InsecureSkipVerify: true})
+}
+
+func newClient(base string, cfg *tls.Config) *Client {
 	return &Client{
 		Base: strings.TrimSuffix(base, "/"),
 		http: &http.Client{
-			Timeout: 15 * time.Second,
-			Transport: &http.Transport{
-				// DSM ships with a self-signed certificate by default.
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
+			Timeout:   15 * time.Second,
+			Transport: &http.Transport{TLSClientConfig: cfg},
 		},
 	}
 }
