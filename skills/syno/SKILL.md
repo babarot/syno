@@ -1,6 +1,6 @@
 ---
 name: syno
-description: "Answer questions about a Synology NAS (DSM) with the syno CLI or its MCP tools (syno_*): whether it is healthy, free space and the shared folders that use it, disks and temperatures, load, containers, package and DSM updates, and other DSM state such as users, backups and logs. Use when the user asks about their Synology, NAS or DSM."
+description: "Answer questions about a Synology NAS (DSM) with the syno CLI or its MCP tools (syno_*): whether it is healthy, free space and the shared folders that use it, disks and temperatures, load, containers, package and DSM updates, and other DSM state such as users, backups and logs, and start, stop or restart its containers. Use when the user asks about their Synology, NAS or DSM."
 license: MIT
 ---
 
@@ -26,6 +26,14 @@ Each tool call and command uses the profile given by `--profile` or `SYNO_PROFIL
 - Shared folders and the space each uses: `syno share list` (`syno_shares`). Add `--recycle` (`recycle`) for what emptying the recycle bins would free.
 
 Start broad and narrow down: a warning in doctor tells you which part to look at in status. In the answer, give the numbers and where they come from (the doctor check, or the field of status), and say which `host` answered when there is more than one NAS.
+
+## Changing the NAS
+
+syno changes the NAS only through these commands, and only from the CLI: the MCP tools never change anything.
+
+- Start, stop or restart containers: `syno container start|stop|restart NAME...`.
+
+Before running one, tell the user which containers you would act on and what you expect to happen, and run it only after they agree, with `--yes`, since there is no terminal to answer syno's own question. Name the containers exactly as `syno container list` shows them. If a container fails to start, report the reason syno prints; do not try to fix the NAS around it.
 
 ## Questions the commands do not cover
 

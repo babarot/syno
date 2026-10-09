@@ -169,6 +169,18 @@ syno container list --running
 syno container list --project web --json
 ```
 
+`start`, `stop` and `restart` act on containers, one after another in the order given. syno asks before changing anything, and `--yes` skips the question, as scripts and AI agents need. Each action takes a few seconds. Starting a running container or stopping a stopped one does nothing. When a container fails to start, syno shows the reason Docker gave, which DSM does not, and leaves the rest alone.
+
+```console
+$ syno container restart web-app-1
+Restart web-app-1 on https://192.168.1.10:5001? [y/N] y
+Restarting web-app-1 ... done in 5.1s, running.
+
+$ syno container start old-job --yes
+Starting old-job ... failed.
+Error: start old-job: network 3d0e823bc093 not found (SYNO.Docker.Container.start: error (code 1301))
+```
+
 ### package
 
 Lists the installed packages with the latest version in Package Center. LATEST shows the newer version when there is one, marked `(security)` for a security update, `-` when the package is up to date, and `?` when Package Center does not know the package, as with third-party ones. Nothing is updated.

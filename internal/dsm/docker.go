@@ -2,6 +2,8 @@ package dsm
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/url"
 )
 
@@ -23,7 +25,10 @@ type Container struct {
 		Status   string `json:"Status"`
 		Running  bool   `json:"Running"`
 		ExitCode int    `json:"ExitCode"`
-		Health   *struct {
+		// Error is why Docker could not start the container, such as a
+		// network that no longer exists.
+		Error  string `json:"Error"`
+		Health *struct {
 			// Status is "starting", "healthy" or "unhealthy".
 			Status        string `json:"Status"`
 			FailingStreak int    `json:"FailingStreak"`
@@ -67,4 +72,35 @@ func (c *Client) Containers(ctx context.Context) ([]Container, error) {
 		return nil, err
 	}
 	return out.Containers, nil
+}
+
+// ContainerActionResult is what start, stop and restart answer: the usage
+// of the container after the action.
+type ContainerActionResult struct {
+	Name          string `json:"name"`
+	CPU           Num    `json:"cpu"`
+	Memory        Num    `json:"memory"` // bytes
+	MemoryPercent Num    `json:"memoryPercent"`
+}
+
+// ContainerAction starts, stops or restarts a container. DSM answers when
+// the action is done, which takes several seconds, and the actions are
+// idempotent: starting a running container does nothing. When a container
+// fails to start, DSM answers with code 1301 and no reason; the reason is in
+// the container's State.Error.
+func (c *Client) ContainerAction(ctx context.Context, action, name string) (*ContainerActionResult, error) {
+	switch action {
+	case "start", "stop", "restart":
+	default:
+		return nil, fmt.Errorf("unknown container action %q", action)
+	}
+	b, err := json.Marshal(name)
+	if err != nil {
+		return nil, err
+	}
+	var out ContainerActionResult
+	if err := c.Call(ctx, ContainerAPI, 1, action, url.Values{"name": {string(b)}}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

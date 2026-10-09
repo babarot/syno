@@ -69,3 +69,30 @@ func TestIsNoAPI(t *testing.T) {
 		t.Error("code 102 of another API should not be IsNoAPI")
 	}
 }
+
+func TestContainerAction(t *testing.T) {
+	var method, name string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		method, name = r.PostForm.Get("method"), r.PostForm.Get("name")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"name":"web-app-1","cpu":0.25,"memory":4878336,"memoryPercent":0.12}}`))
+	}))
+	defer srv.Close()
+	c := NewInsecure(srv.URL)
+
+	r, err := c.ContainerAction(context.Background(), "restart", "web-app-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if method != "restart" || name != `"web-app-1"` {
+		t.Errorf("sent method=%s name=%s, want restart and a JSON string", method, name)
+	}
+	if r.Memory != 4878336 {
+		t.Errorf("result = %+v", r)
+	}
+	if _, err := c.ContainerAction(context.Background(), "delete", "web-app-1"); err == nil {
+		t.Error("delete should be refused")
+	}
+}
