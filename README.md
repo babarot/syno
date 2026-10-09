@@ -199,6 +199,24 @@ syno api SYNO.Core.Share list -f additional='["share_quota"]'
 
 For APIs that take JSON parameters, `-f` values that are not valid JSON are sent as JSON strings, so `-f name=homes` works as well as `-f 'name="homes"'`. A value that is valid JSON is sent as it is: quote a number the API expects as a string, as in `-f 'id="123"'`.
 
+### mcp
+
+Runs an MCP server over stdio, so that an AI assistant such as Claude Code can answer questions like "how much space is left?" or "is any container down?". The tools only read, and give the same JSON as the `--json` output of the commands:
+
+| Tool | Same as |
+|------|---------|
+| `syno_status` | `syno status --json` |
+| `syno_doctor` | `syno doctor --json`, with `skip` and `only` |
+| `syno_containers` | `syno container list --json`, with `running` and `project` |
+| `syno_packages` | `syno package list --json`, with `outdated` |
+
+`syno api` is not offered as a tool, since it can call methods that change the NAS. The server uses the profile chosen when it starts, so register one server per NAS:
+
+```bash
+claude mcp add syno -- syno mcp
+claude mcp add syno-office -- syno mcp --profile office
+```
+
 ## Configuration
 
 syno keeps two files in `~/.config/syno` (or `$XDG_CONFIG_HOME/syno`):

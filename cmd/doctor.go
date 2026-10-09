@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -104,6 +105,9 @@ type doctorReport struct {
 
 // runDoctor runs the checks with config.yaml and the given --skip or --only.
 func runDoctor(ctx context.Context, skip, only []string) (*doctorReport, error) {
+	if len(skip) > 0 && len(only) > 0 {
+		return nil, errors.New("skip and only cannot be used together")
+	}
 	opts, err := doctorOptions(skip, only)
 	if err != nil {
 		return nil, err
