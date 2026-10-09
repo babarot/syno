@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,51 +17,161 @@ import (
 )
 
 func newStatusCmd() *cobra.Command {
-	var raw bool
+	var (
+		raw    bool
+		asJSON bool
+	)
 
 	c := &cobra.Command{
 		Use:   "status",
 		Short: "Show system, utilization, volumes and disks of the NAS",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			client, release, err := connect(ctx)
-			if err != nil {
-				return err
-			}
-			defer release()
-
 			if raw {
+				client, release, err := connect(ctx)
+				if err != nil {
+					return err
+				}
+				defer release()
 				return printRaw(cmd, client)
 			}
 
-			var (
-				sys  *dsm.SystemInfo
-				util *dsm.Utilization
-				st   *dsm.Storage
-			)
-			g, gctx := errgroup.WithContext(ctx)
-			g.Go(func() (err error) { sys, err = client.SystemInfo(gctx); return })
-			g.Go(func() (err error) { util, err = client.Utilization(gctx); return })
-			g.Go(func() (err error) { st, err = client.Storage(gctx); return })
-			if err := g.Wait(); err != nil {
+			s, err := loadStatus(ctx)
+			if err != nil {
 				return err
+			}
+			if asJSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(s.report())
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-			printSystem(w, client.Base, sys, util)
+			printSystem(w, s.host, s.sys, s.util)
 			fmt.Fprintln(w)
-			printPools(w, st)
+			printPools(w, s.st)
 			fmt.Fprintln(w)
-			printVolumes(w, st)
+			printVolumes(w, s.st)
 			fmt.Fprintln(w)
-			printDisks(w, st)
+			printDisks(w, s.st)
 			return w.Flush()
 		},
 	}
 
 	c.Flags().BoolVar(&raw, "raw", false, "Print the raw API responses as JSON")
+	c.Flags().BoolVar(&asJSON, "json", false, "Output as JSON")
+	c.MarkFlagsMutuallyExclusive("raw", "json")
 
 	return c
+}
+
+// status is what syno status shows, as DSM returns it.
+type status struct {
+	host string
+	sys  *dsm.SystemInfo
+	util *dsm.Utilization
+	st   *dsm.Storage
+}
+
+func loadStatus(ctx context.Context) (*status, error) {
+	client, release, err := connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	s := &status{host: client.Base}
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() (err error) { s.sys, err = client.SystemInfo(gctx); return })
+	g.Go(func() (err error) { s.util, err = client.Utilization(gctx); return })
+	g.Go(func() (err error) { s.st, err = client.Storage(gctx); return })
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// statusReport is the JSON of syno status --json and the syno_status MCP
+// tool: the table's contents with sizes in bytes.
+type statusReport struct {
+	Host          string         `json:"host"`
+	Model         string         `json:"model"`
+	Serial        string         `json:"serial"`
+	DSM           string         `json:"dsm"`
+	Uptime        string         `json:"uptime"`
+	TemperatureC  float64        `json:"temperature_c"`
+	CPUPercent    float64        `json:"cpu_percent"`
+	MemoryPercent float64        `json:"memory_percent"`
+	MemoryBytes   float64        `json:"memory_bytes"`
+	Pools         []poolReport   `json:"pools"`
+	Volumes       []volumeReport `json:"volumes"`
+	Disks         []diskReport   `json:"disks"`
+}
+
+type poolReport struct {
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	Type       string  `json:"type"`
+	Disks      int     `json:"disks"`
+	UsedBytes  float64 `json:"used_bytes"`
+	TotalBytes float64 `json:"total_bytes"`
+}
+
+type volumeReport struct {
+	Path       string  `json:"path"`
+	Status     string  `json:"status"`
+	Detail     string  `json:"detail,omitempty"`
+	FS         string  `json:"fs"`
+	Pool       string  `json:"pool"`
+	UsedBytes  float64 `json:"used_bytes"`
+	TotalBytes float64 `json:"total_bytes"`
+}
+
+type diskReport struct {
+	Name         string  `json:"name"`
+	Model        string  `json:"model"`
+	SizeBytes    float64 `json:"size_bytes"`
+	Status       string  `json:"status"`
+	SMART        string  `json:"smart"`
+	TemperatureC float64 `json:"temperature_c"`
+	Pool         string  `json:"pool"`
+}
+
+func (s *status) report() statusReport {
+	u := s.util
+	r := statusReport{
+		Host:          s.host,
+		Model:         s.sys.Model,
+		Serial:        s.sys.Serial,
+		DSM:           s.sys.FirmwareVer,
+		Uptime:        formatUptime(s.sys.UpTime),
+		TemperatureC:  float64(s.sys.SysTemp),
+		CPUPercent:    float64(u.CPU.UserLoad + u.CPU.SystemLoad + u.CPU.OtherLoad),
+		MemoryPercent: float64(u.Memory.RealUsage),
+		MemoryBytes:   float64(u.Memory.TotalReal) * 1024,
+		Pools:         []poolReport{},
+		Volumes:       []volumeReport{},
+		Disks:         []diskReport{},
+	}
+	for _, p := range s.st.StoragePools {
+		r.Pools = append(r.Pools, poolReport{
+			Name: poolName(s.st, p.ID), Status: p.Status, Type: p.DeviceType, Disks: len(p.Disks),
+			UsedBytes: float64(p.Size.Used), TotalBytes: float64(p.Size.Total),
+		})
+	}
+	for _, v := range s.st.Volumes {
+		r.Volumes = append(r.Volumes, volumeReport{
+			Path: v.VolPath, Status: v.Status, Detail: v.SpaceStatus.Detail, FS: v.FSType, Pool: poolName(s.st, v.PoolPath),
+			UsedBytes: float64(v.Size.Used), TotalBytes: float64(v.Size.Total),
+		})
+	}
+	for _, d := range s.st.Disks {
+		r.Disks = append(r.Disks, diskReport{
+			Name: d.Name, Model: strings.Join(strings.Fields(d.Vendor+" "+d.Model), " "), SizeBytes: float64(d.SizeTotal),
+			Status: d.Status, SMART: d.SmartStatus, TemperatureC: float64(d.Temp), Pool: poolName(s.st, d.UsedBy),
+		})
+	}
+	return r
 }
 
 func printSystem(w io.Writer, host string, s *dsm.SystemInfo, u *dsm.Utilization) {

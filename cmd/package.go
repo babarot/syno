@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,25 +44,10 @@ updated.`,
   syno package list --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			client, release, err := connect(ctx)
+			rows, err := listPackages(cmd.Context(), outdated)
 			if err != nil {
 				return err
 			}
-			defer release()
-
-			var (
-				installed []dsm.Package
-				store     []dsm.StorePackage
-			)
-			g, gctx := errgroup.WithContext(ctx)
-			g.Go(func() (err error) { installed, err = client.Packages(gctx); return })
-			g.Go(func() (err error) { store, err = client.StorePackages(gctx); return })
-			if err := g.Wait(); err != nil {
-				return err
-			}
-
-			rows := packageRows(dsm.PackageUpdates(installed, store), outdated)
 			if asJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
@@ -75,6 +61,27 @@ updated.`,
 	c.Flags().BoolVar(&outdated, "outdated", false, "List only the packages with an update")
 
 	return c
+}
+
+// listPackages lists the packages as syno package list shows them.
+func listPackages(ctx context.Context, outdated bool) ([]packageRow, error) {
+	client, release, err := connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	var (
+		installed []dsm.Package
+		store     []dsm.StorePackage
+	)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() (err error) { installed, err = client.Packages(gctx); return })
+	g.Go(func() (err error) { store, err = client.StorePackages(gctx); return })
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return packageRows(dsm.PackageUpdates(installed, store), outdated), nil
 }
 
 // packageRow is what syno shows of a package, in the table and in JSON.

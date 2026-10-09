@@ -93,7 +93,7 @@ Every command that logs in uses the profile given by `--profile` (`-p`), then `S
 
 ### status
 
-Shows the system, CPU and memory usage, storage pools, volumes and disks. `--raw` prints the API responses as they are.
+Shows the system, CPU and memory usage, storage pools, volumes and disks. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
 
 ```console
 $ syno status
