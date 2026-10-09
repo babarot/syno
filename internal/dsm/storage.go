@@ -3,6 +3,7 @@ package dsm
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 )
 
 // Storage is SYNO.Storage.CGI.Storage load_info. It needs an administrator.
@@ -38,6 +39,12 @@ type Disk struct {
 	UsedBy      string `json:"used_by"`
 	// Unc is the number of uncorrectable sectors.
 	Unc Num `json:"unc"`
+	// RemainLife is the life left in percent that DSM estimates, mostly for
+	// SSDs. Value is -1 when DSM has no estimate, as for most HDDs, and
+	// RemainLife is nil on a DSM that does not send it.
+	RemainLife *struct {
+		Value Num `json:"value"`
+	} `json:"remain_life"`
 	// Life estimates DSM computes, mostly for SSDs.
 	RemainLifeDanger   bool `json:"remain_life_danger"`
 	BelowRemainLifeThr bool `json:"below_remain_life_thr"`
@@ -94,4 +101,38 @@ func (c *Client) Storage(ctx context.Context) (*Storage, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// LifePercent returns the life left in percent that DSM estimates, and false
+// when it has none.
+func (d Disk) LifePercent() (float64, bool) {
+	if d.RemainLife == nil {
+		return 0, false
+	}
+	v := float64(d.RemainLife.Value)
+	return v, v >= 0
+}
+
+// DiskHealth is the part of SYNO.Storage.CGI.Smart get_health_info that
+// load_info lacks.
+type DiskHealth struct {
+	PowerOnHours Num `json:"poweron"`
+}
+
+// DiskHealth reads the SMART overview of one disk. device is Disk.Device,
+// like "/dev/sata1". It takes one call per disk.
+func (c *Client) DiskHealth(ctx context.Context, device string) (*DiskHealth, error) {
+	b, err := json.Marshal(device)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		HealthInfo struct {
+			Overview DiskHealth `json:"overview"`
+		} `json:"healthInfo"`
+	}
+	if err := c.Call(ctx, "SYNO.Storage.CGI.Smart", 1, "get_health_info", url.Values{"device": {string(b)}}, &out); err != nil {
+		return nil, err
+	}
+	return &out.HealthInfo.Overview, nil
 }

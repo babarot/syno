@@ -93,7 +93,7 @@ Every command that logs in uses the profile given by `--profile` (`-p`), then `S
 
 ### status
 
-Shows the system, CPU and memory usage, storage pools, volumes and disks. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
+Shows the system, CPU and memory usage, storage pools, volumes and disks. For each disk, `LIFE` is the life left that DSM estimates, which it does for most SSDs and not for HDDs, and `POWER-ON` is how long the disk has run, from SMART. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
 
 ```console
 $ syno status
@@ -113,8 +113,8 @@ Pool 1   normal   shr_with_1_disk_protect   4       19.1 TB   21.8 TB   88%
 VOLUME     STATUS   FS      POOL     USED      TOTAL     USE%
 /volume1   normal   btrfs   Pool 1   18.6 TB   21.1 TB   88%
 
-DISK      MODEL                        SIZE     STATUS   SMART    TEMP   POOL
-Drive 1   WDC WD80EFZZ-68BTXN0         7.3 TB   normal   normal   37°C   Pool 1
+DISK      MODEL                        SIZE     STATUS   SMART    TEMP   LIFE   POWER-ON   POOL
+Drive 1   WDC WD80EFZZ-68BTXN0         7.3 TB   normal   normal   37°C   -      2.7y       Pool 1
 ...
 ```
 
