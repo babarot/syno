@@ -149,12 +149,12 @@ The exit status follows the Nagios plugin convention, so `syno doctor` can be us
 | 2 | At least one check fails |
 | 3 | A check could not run, the NAS could not be reached, or the settings are invalid |
 
-### containers
+### container
 
 Lists the containers of Container Manager with their state, health check and Docker Compose project. Stopped containers are listed too, unlike `docker ps`, so that a container that went down after a deploy is not missed. Environment variables are never read or printed.
 
 ```console
-$ syno containers
+$ syno container list
 NAME          STATE     HEALTH      PROJECT   IMAGE                   STATUS
 web-app-1     running   healthy     web       example/app:latest      Up 2 days
 web-db-1      exited    unhealthy   web       postgres:16             Exited (1) 3 hours ago
@@ -162,8 +162,8 @@ proxy         running   -           -         nginx:latest            Up 5 days
 ```
 
 ```bash
-syno containers --running
-syno containers --project web --json
+syno container list --running
+syno container list --project web --json
 ```
 
 ### api

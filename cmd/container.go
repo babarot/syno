@@ -13,7 +13,16 @@ import (
 	"github.com/babarot/syno/internal/dsm"
 )
 
-func newContainersCmd() *cobra.Command {
+func newContainerCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "container",
+		Short: "Inspect the containers of Container Manager",
+	}
+	c.AddCommand(newContainerListCmd())
+	return c
+}
+
+func newContainerListCmd() *cobra.Command {
 	var (
 		asJSON      bool
 		runningOnly bool
@@ -21,16 +30,18 @@ func newContainersCmd() *cobra.Command {
 	)
 
 	c := &cobra.Command{
-		Use:   "containers",
-		Short: "List the containers of Container Manager",
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List the containers of Container Manager",
 		Long: `List the containers of Container Manager with their state and health.
 
 Stopped containers are listed too, unlike docker ps, so that a container that
 went down after a deploy is not missed. Environment variables are never read
 or printed; use syno api SYNO.Docker.Container list for the raw response.`,
-		Example: `  syno containers
-  syno containers --running
-  syno containers --project web --json`,
+		Example: `  syno container list
+  syno container list --running
+  syno container list --project web --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			client, err := connect(ctx)
