@@ -85,7 +85,11 @@ func ProbeTLS(ctx context.Context, base string, roots *x509.CertPool) (*TLSProbe
 			return nil, err
 		}
 		defer conn.Close()
-		certs := conn.(*tls.Conn).ConnectionState().PeerCertificates
+		tlsConn, ok := conn.(*tls.Conn)
+		if !ok {
+			return nil, fmt.Errorf("unexpected connection type %T", conn)
+		}
+		certs := tlsConn.ConnectionState().PeerCertificates
 		if len(certs) == 0 {
 			return nil, errors.New("server sent no certificate")
 		}

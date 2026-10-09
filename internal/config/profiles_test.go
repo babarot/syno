@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,7 +67,7 @@ func TestSelect(t *testing.T) {
 		t.Error("ambiguous selection should fail")
 	}
 
-	if _, _, err := (&Profiles{}).Select(""); err != ErrNoProfile {
+	if _, _, err := (&Profiles{}).Select(""); !errors.Is(err, ErrNoProfile) {
 		t.Errorf("empty: err = %v, want ErrNoProfile", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -120,9 +121,7 @@ func (c *Client) Call(ctx context.Context, api string, version int, method strin
 // out of URLs.
 func (c *Client) CallPath(ctx context.Context, path, api string, version int, method string, params url.Values, out any) error {
 	form := url.Values{}
-	for k, v := range params {
-		form[k] = v
-	}
+	maps.Copy(form, params)
 	form.Set("api", api)
 	form.Set("version", strconv.Itoa(version))
 	form.Set("method", method)

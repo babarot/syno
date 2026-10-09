@@ -26,8 +26,7 @@ func TestTrustServer(t *testing.T) {
 	}
 
 	_, err = trustServer(ctx, srv.URL, trustOptions{TrustPin: "sha256/AAAA"})
-	var mismatch *dsm.PinMismatchError
-	if !errors.As(err, &mismatch) {
+	if _, ok := errors.AsType[*dsm.PinMismatchError](err); !ok {
 		t.Errorf("wrong --trust-pin: err = %v, want PinMismatchError", err)
 	}
 
@@ -77,7 +76,9 @@ func TestConfirmTrust(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	confirmTrust(strings.NewReader("n\n"), &out, srv.URL, probe, "sha256/OLD")
+	if _, err := confirmTrust(strings.NewReader("n\n"), &out, srv.URL, probe, "sha256/OLD"); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(out.String(), "changed since the last login") || !strings.Contains(out.String(), "sha256/OLD") {
 		t.Errorf("changed certificate is not called out:\n%s", out.String())
 	}

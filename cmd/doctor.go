@@ -71,7 +71,7 @@ used from cron or a monitoring system:
 			if err != nil {
 				return &ExitError{Code: 3, Err: err}
 			}
-			defer client.Logout(ctx)
+			defer logout(ctx, client)
 
 			results := doctor.Run(ctx, client, opts)
 			code := doctor.ExitCode(results)

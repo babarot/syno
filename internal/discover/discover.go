@@ -81,15 +81,13 @@ func Run(ctx context.Context, opts Options) ([]Device, error) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for ip := range cands {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if u := probeDSM(ctx, ip); u != "" {
 				mu.Lock()
 				dsm[ip] = u
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

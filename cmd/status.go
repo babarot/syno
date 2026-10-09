@@ -27,7 +27,7 @@ func newStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Logout(ctx)
+			defer logout(ctx, client)
 
 			if raw {
 				return printRaw(cmd, client)

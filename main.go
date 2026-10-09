@@ -8,19 +8,13 @@ import (
 	"github.com/babarot/syno/cmd"
 )
 
-var (
-	version  = "dev"
-	revision = "HEAD"
-)
-
 func main() {
-	err := cmd.NewRootCmd(version, revision).Execute()
+	err := cmd.NewRootCmd().Execute()
 	if err == nil {
 		return
 	}
 	code := 1
-	var exitErr *cmd.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*cmd.ExitError](err); ok {
 		code = exitErr.Code
 		err = exitErr.Err
 	}

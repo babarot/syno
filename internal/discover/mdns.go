@@ -36,9 +36,7 @@ func browseMDNS(ctx context.Context, timeout time.Duration) (map[netip.Addr]stri
 			return nil, err
 		}
 		entries := make(chan *zeroconf.ServiceEntry)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for e := range entries {
 				name := strings.TrimSuffix(e.HostName, ".")
 				name = strings.TrimSuffix(name, ".local")
@@ -53,7 +51,7 @@ func browseMDNS(ctx context.Context, timeout time.Duration) (map[netip.Addr]stri
 				}
 				mu.Unlock()
 			}
-		}()
+		})
 		if err := resolver.Browse(ctx, svc, "local.", entries); err != nil {
 			errs <- err
 		}

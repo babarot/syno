@@ -106,7 +106,7 @@ issues is saved so that later commands do not ask again.`,
 			if err != nil {
 				return err
 			}
-			_ = client.Logout(ctx)
+			logout(ctx, client)
 
 			if err := credential.SetPassword(host, user, password); err != nil {
 				return err

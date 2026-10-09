@@ -12,7 +12,7 @@ import (
 func newTLSServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"success":true,"data":{"need_reboot":false}}`))
+		_, _ = w.Write([]byte(`{"success":true,"data":{"need_reboot":false}}`))
 	}))
 	t.Cleanup(srv.Close)
 	return srv

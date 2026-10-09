@@ -2,15 +2,17 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/babarot/syno/internal/version"
 )
 
-func NewRootCmd(version, revision string) *cobra.Command {
+func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "syno",
 		Short:         "Find and inspect Synology NAS on the local network",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Version:       version + " (" + revision + ")",
+		Version:       version.String(),
 	}
 
 	root.PersistentFlags().StringVarP(&profileFlag, "profile", "p", "", "Profile to use (default: $SYNO_PROFILE, then the current profile)")

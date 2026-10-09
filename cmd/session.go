@@ -102,8 +102,7 @@ func connect(ctx context.Context) (*dsm.Client, error) {
 
 	c := dsm.New(p.URL, p.TLS.Pin)
 	if _, err := c.Login(ctx, dsm.LoginOptions{User: p.User, Password: password, DeviceID: deviceID}); err != nil {
-		var certErr *tls.CertificateVerificationError
-		if errors.As(err, &certErr) {
+		if _, ok := errors.AsType[*tls.CertificateVerificationError](err); ok {
 			return nil, fmt.Errorf("%w; run `syno login` to check the certificate and pin it", err)
 		}
 		return nil, err
@@ -121,4 +120,10 @@ func defaultProfileName(mdnsName, rawURL string) string {
 		return u.Hostname()
 	}
 	return "default"
+}
+
+// logout ends the session. A failure only leaves the session to expire on
+// the NAS, so it is not worth failing a command that already did its work.
+func logout(ctx context.Context, c *dsm.Client) {
+	_ = c.Logout(ctx)
 }
