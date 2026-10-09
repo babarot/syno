@@ -172,3 +172,9 @@ func (c *Client) CallPath(ctx context.Context, path, api string, version int, me
 	}
 	return nil
 }
+
+// SID returns the session ID of the logged in session, or "".
+func (c *Client) SID() string { return c.sid }
+
+// SetSID resumes a session saved from an earlier login.
+func (c *Client) SetSID(sid string) { c.sid = sid }

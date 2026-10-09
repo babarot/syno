@@ -21,6 +21,12 @@ func TestCredential(t *testing.T) {
 	if err := SetDeviceID(host, user, "device-token"); err != nil {
 		t.Fatal(err)
 	}
+	if err := SetSession(host, user, "sid"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Session(host, user); err != nil || got != "sid" {
+		t.Errorf("Session = %q, %v", got, err)
+	}
 	if got, err := Password(host, user); err != nil || got != "secret" {
 		t.Errorf("Password = %q, %v", got, err)
 	}
@@ -37,9 +43,25 @@ func TestCredential(t *testing.T) {
 	if _, err := DeviceID(host, user); !errors.Is(err, ErrNotFound) {
 		t.Errorf("DeviceID after delete: err = %v, want ErrNotFound", err)
 	}
+	if _, err := Session(host, user); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Session after delete: err = %v, want ErrNotFound", err)
+	}
 
 	// Deleting again is not an error.
 	if err := Delete(host, user); err != nil {
 		t.Errorf("second Delete: %v", err)
+	}
+
+	// DeleteSession keeps the password.
+	_ = SetPassword(host, user, "secret")
+	_ = SetSession(host, user, "sid")
+	if err := DeleteSession(host, user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Session(host, user); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Session after DeleteSession: err = %v, want ErrNotFound", err)
+	}
+	if _, err := Password(host, user); err != nil {
+		t.Errorf("Password after DeleteSession: %v", err)
 	}
 }

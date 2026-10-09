@@ -16,6 +16,7 @@ var ErrNotFound = errors.New("not found in keyring")
 
 func passwordAccount(host, user string) string { return user + "@" + host }
 func deviceAccount(host, user string) string   { return user + "@" + host + "#device" }
+func sessionAccount(host, user string) string  { return user + "@" + host + "#session" }
 
 func Password(host, user string) (string, error) { return get(passwordAccount(host, user)) }
 func DeviceID(host, user string) (string, error) { return get(deviceAccount(host, user)) }
@@ -23,13 +24,28 @@ func DeviceID(host, user string) (string, error) { return get(deviceAccount(host
 func SetPassword(host, user, secret string) error { return set(passwordAccount(host, user), secret) }
 func SetDeviceID(host, user, secret string) error { return set(deviceAccount(host, user), secret) }
 
-// Delete removes the password and the device token of the account.
-// Items that do not exist are ignored.
+// Session returns the DSM session ID saved by the last login. Like the
+// password, it is enough to call the API as the account, so it is kept in
+// the keyring rather than in a file.
+func Session(host, user string) (string, error) { return get(sessionAccount(host, user)) }
+func SetSession(host, user, sid string) error   { return set(sessionAccount(host, user), sid) }
+func DeleteSession(host, user string) error     { return del(sessionAccount(host, user)) }
+
+// Delete removes the password, the device token and the session of the
+// account. Items that do not exist are ignored.
 func Delete(host, user string) error {
-	for _, account := range []string{passwordAccount(host, user), deviceAccount(host, user)} {
-		if err := keyring.Delete(service, account); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			return fmt.Errorf("delete %s from keyring: %w", account, err)
+	for _, account := range []string{passwordAccount(host, user), deviceAccount(host, user), sessionAccount(host, user)} {
+		if err := del(account); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// del removes an item. One that does not exist is not an error.
+func del(account string) error {
+	if err := keyring.Delete(service, account); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return fmt.Errorf("delete %s from keyring: %w", account, err)
 	}
 	return nil
 }

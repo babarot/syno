@@ -44,11 +44,11 @@ or printed; use syno api SYNO.Docker.Container list for the raw response.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			client, err := connect(ctx)
+			client, release, err := connect(ctx)
 			if err != nil {
 				return err
 			}
-			defer logout(ctx, client)
+			defer release()
 
 			cs, err := client.Containers(ctx)
 			if dsm.IsNoAPI(err, dsm.ContainerAPI) {

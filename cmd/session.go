@@ -77,37 +77,107 @@ func discoverOne(ctx context.Context) (string, string, error) {
 	}
 }
 
-// connect logs in with the selected profile.
-// SYNO_PASSWORD overrides the keyring, for hosts without one.
-func connect(ctx context.Context) (*dsm.Client, error) {
+// connect returns a client logged in with the selected profile. It resumes
+// the session saved in the keyring by an earlier command when DSM still
+// accepts it, and logs in with the password otherwise. Commands defer the
+// returned release, which logs out only a session that could not be saved.
+func connect(ctx context.Context) (*dsm.Client, func(), error) {
 	_, p, err := selectProfile()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	password := os.Getenv("SYNO_PASSWORD")
-	if password == "" {
-		password, err = credential.Password(p.URL, p.User)
-		if errors.Is(err, credential.ErrNotFound) {
-			return nil, fmt.Errorf("no password saved for %s@%s, run `syno login`", p.User, p.URL)
+	c := dsm.New(p.URL, p.TLS.Pin)
+	release, err := openSession(ctx, c, keyringStore{}, p.URL, p.User)
+	if err != nil {
+		if _, ok := errors.AsType[*tls.CertificateVerificationError](err); ok {
+			err = fmt.Errorf("%w; run `syno login` to check the certificate and pin it", err)
 		}
-		if err != nil {
+		return nil, nil, err
+	}
+	return c, release, nil
+}
+
+// sessionClient is the part of dsm.Client that openSession uses.
+type sessionClient interface {
+	SID() string
+	SetSID(sid string)
+	Login(ctx context.Context, o dsm.LoginOptions) (string, error)
+	Logout(ctx context.Context) error
+	NeedReboot(ctx context.Context) (bool, error)
+}
+
+// secretStore is the part of the keyring that openSession uses.
+type secretStore interface {
+	Password(host, user string) (string, error)
+	DeviceID(host, user string) (string, error)
+	Session(host, user string) (string, error)
+	SetSession(host, user, sid string) error
+}
+
+// keyringStore reads the OS keyring. SYNO_PASSWORD overrides the saved
+// password, for hosts without a keyring.
+type keyringStore struct{}
+
+func (keyringStore) Password(host, user string) (string, error) {
+	if pw := os.Getenv("SYNO_PASSWORD"); pw != "" {
+		return pw, nil
+	}
+	return credential.Password(host, user)
+}
+func (keyringStore) DeviceID(host, user string) (string, error) {
+	return credential.DeviceID(host, user)
+}
+func (keyringStore) Session(host, user string) (string, error) { return credential.Session(host, user) }
+func (keyringStore) SetSession(host, user, sid string) error {
+	return credential.SetSession(host, user, sid)
+}
+
+func openSession(ctx context.Context, c sessionClient, store secretStore, host, user string) (release func(), err error) {
+	if sid, err := store.Session(host, user); err == nil && sid != "" {
+		c.SetSID(sid)
+		// A cheap call tells whether DSM still accepts the session, and
+		// surfaces certificate and network errors here rather than in the
+		// middle of a command.
+		_, err := c.NeedReboot(ctx)
+		var apiErr *dsm.APIError
+		switch {
+		case err == nil:
+			return func() {}, nil
+		case errors.As(err, &apiErr):
+			// An expired session, or an answer that says nothing about the
+			// session (105 means it is valid but lacks permission): log in
+			// again either way.
+			c.SetSID("")
+		default:
 			return nil, err
 		}
 	}
-	deviceID, err := credential.DeviceID(p.URL, p.User)
+
+	password, err := store.Password(host, user)
+	if errors.Is(err, credential.ErrNotFound) {
+		return nil, fmt.Errorf("no password saved for %s@%s, run `syno login`", user, host)
+	}
+	if err != nil {
+		return nil, err
+	}
+	deviceID, err := store.DeviceID(host, user)
 	if err != nil && !errors.Is(err, credential.ErrNotFound) {
 		return nil, err
 	}
-
-	c := dsm.New(p.URL, p.TLS.Pin)
-	if _, err := c.Login(ctx, dsm.LoginOptions{User: p.User, Password: password, DeviceID: deviceID}); err != nil {
-		if _, ok := errors.AsType[*tls.CertificateVerificationError](err); ok {
-			return nil, fmt.Errorf("%w; run `syno login` to check the certificate and pin it", err)
-		}
+	if _, err := c.Login(ctx, dsm.LoginOptions{User: user, Password: password, DeviceID: deviceID}); err != nil {
 		return nil, err
 	}
-	return c, nil
+	return saveSession(ctx, c, store, host, user), nil
+}
+
+// saveSession keeps the session for later commands and returns what to do
+// when the command ends. A session that cannot be saved, as on a host
+// without a keyring, is logged out then rather than left on the NAS.
+func saveSession(ctx context.Context, c sessionClient, store secretStore, host, user string) (release func()) {
+	if err := store.SetSession(host, user, c.SID()); err != nil {
+		return func() { _ = c.Logout(ctx) }
+	}
+	return func() {}
 }
 
 // defaultProfileName names a new profile after the NAS: its mDNS name, or
@@ -120,10 +190,4 @@ func defaultProfileName(mdnsName, rawURL string) string {
 		return u.Hostname()
 	}
 	return "default"
-}
-
-// logout ends the session. A failure only leaves the session to expire on
-// the NAS, so it is not worth failing a command that already did its work.
-func logout(ctx context.Context, c *dsm.Client) {
-	_ = c.Logout(ctx)
 }

@@ -23,11 +23,11 @@ func newStatusCmd() *cobra.Command {
 		Short: "Show system, utilization, volumes and disks of the NAS",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			client, err := connect(ctx)
+			client, release, err := connect(ctx)
 			if err != nil {
 				return err
 			}
-			defer logout(ctx, client)
+			defer release()
 
 			if raw {
 				return printRaw(cmd, client)

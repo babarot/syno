@@ -77,6 +77,8 @@ syno login --host https://192.168.1.10:5001 -u admin --profile home
 
 When the account uses 2FA, syno asks for a code once and saves the device token DSM issues, so later commands do not ask again.
 
+Commands share one DSM session per profile instead of logging in each time, which saves about a third of a second per command. When DSM no longer accepts the session, the next command logs in again with the saved password. `syno logout` ends the session; the password stays saved.
+
 ### profile
 
 ```bash
@@ -224,7 +226,7 @@ Unknown keys are errors, so a typo does not go unnoticed. `--skip` adds to `doct
 
 ## Security
 
-- Passwords and 2FA device tokens are kept in the OS keyring: the Keychain on macOS and the Secret Service on Linux. On a machine without a keyring, set `SYNO_PASSWORD`.
+- Passwords, 2FA device tokens and the shared DSM session are kept in the OS keyring: the Keychain on macOS and the Secret Service on Linux. On a machine without a keyring, set `SYNO_PASSWORD`; each command then logs in and logs out as it ends.
 - The server certificate is verified. A NAS often has a certificate the system does not trust, such as DSM's self-signed one, or one for a domain name while you connect by IP address. In that case `syno login` shows the certificate and asks whether to pin its public key, as SSH does with host keys. Later commands then accept only that key, and fail if it changes. `--trust-pin` accepts a known pin without asking.
 - To avoid pinning, connect with a host name that has a valid certificate, for example `syno login --host https://nas.example.com:5001`.
 - `syno login` refuses plain HTTP unless `--allow-http` is given, since the password would be sent in clear text.

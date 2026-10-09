@@ -44,11 +44,11 @@ updated.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			client, err := connect(ctx)
+			client, release, err := connect(ctx)
 			if err != nil {
 				return err
 			}
-			defer logout(ctx, client)
+			defer release()
 
 			var (
 				installed []dsm.Package
