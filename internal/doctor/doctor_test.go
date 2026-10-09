@@ -20,6 +20,8 @@ type fakeSource struct {
 	certs   []dsm.Certificate
 	ctrs    []dsm.Container
 	ctrsErr error
+	pkgs    []dsm.Package
+	store   []dsm.StorePackage
 	err     error
 	stHits  int
 }
@@ -43,6 +45,10 @@ func (f *fakeSource) SecurityScan(context.Context) (*dsm.SecurityScan, error) {
 	return f.scan, f.err
 }
 func (f *fakeSource) Certificates(context.Context) ([]dsm.Certificate, error) { return f.certs, f.err }
+func (f *fakeSource) Packages(context.Context) ([]dsm.Package, error)         { return f.pkgs, f.err }
+func (f *fakeSource) StorePackages(context.Context) ([]dsm.StorePackage, error) {
+	return f.store, f.err
+}
 func (f *fakeSource) Containers(context.Context) ([]dsm.Container, error) {
 	if f.ctrsErr != nil {
 		return nil, f.ctrsErr

@@ -130,6 +130,7 @@ Runs health checks and reports each as ok, warn, fail, unknown or skip. `syno do
 | `system-temperature` | DSM's own temperature warning |
 | `reboot` | A reboot pending to finish an update |
 | `dsm-update` | A newer DSM (the NAS asks Synology's update server) |
+| `package-update` | Security updates of the installed packages in Package Center. Other updates are only counted |
 | `security-advisor` | Findings of the Security Advisor and the age of its last scan |
 | `certificates` | Broken, expired and expiring certificates |
 | `containers` | Running containers that are unhealthy or keep restarting. Stopped ones are only counted. Skipped without Container Manager |
