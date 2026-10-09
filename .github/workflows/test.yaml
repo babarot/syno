@@ -44,3 +44,18 @@ jobs:
       - uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
         with:
           version: latest
+
+  skill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      # Checks skills/ against the Agent Skills specification, as gh skill
+      # install and npx skills read it
+      - run: gh skill publish --dry-run
+        env:
+          GH_TOKEN: ${{ github.token }}

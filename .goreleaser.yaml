@@ -30,6 +30,12 @@ archives:
       {{ .ProjectName }}_
       {{- .Os }}_
       {{- .Arch }}
+    # The default files, and the agent skill for the Nix package to install
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+      - skills/**/*
 
 # tagpr writes the release notes
 changelog:
@@ -48,3 +54,8 @@ nix:
     description: Find the Synology NAS on your network and check on it from the terminal
     license: mit
     main_program: syno
+    # The skill goes where tools put theirs, so that a Home Manager setup
+    # can link it with the binary of the same release
+    extra_install: |-
+      mkdir -p $out/share/skills
+      cp -r skills/syno $out/share/skills/syno
