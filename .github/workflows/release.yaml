@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yaml
+    permissions:
+      contents: read
+
+  # Nothing is released, nor the pull request of the next release made,
+  # from a main that fails the tests
+  tagpr:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run tagpr
+        uses: Songmu/tagpr@555e72cee68c09d43dc2337dc9ba890955b630da # v1.19.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        id: run-tagpr
+    outputs:
+      tag: ${{ steps.run-tagpr.outputs.tag }}
+
+  build:
+    if: needs.tagpr.outputs.tag != ''
+    needs: tagpr
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # Windows is left out: discover reads the ARP table only on macOS and
+      # Linux
+      - name: Compile binaries
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          for target in darwin/arm64/arm64 darwin/amd64/x86_64 linux/arm64/arm64 linux/amd64/x86_64; do
+            IFS=/ read -r goos goarch name <<<"$target"
+            GOOS=$goos GOARCH=$goarch go build -trimpath \
+              -ldflags "-s -w -X github.com/babarot/syno/internal/version.Source=release" \
+              -o "dist/syno-$goos-$name" .
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum -- syno-* > checksums.txt
+          cat checksums.txt
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.tagpr.outputs.tag }}" dist/* --clobber
+
+  publish-nix:
+    if: needs.tagpr.outputs.tag != ''
+    needs: [tagpr, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Publish Nix package to babarot/nur-packages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUR_GITHUB_TOKEN: ${{ secrets.NUR_GITHUB_TOKEN }}
+          TAG: ${{ needs.tagpr.outputs.tag }}
+        run: |
+          gh release download "$TAG" -p checksums.txt -D "$RUNNER_TEMP"
+          nur="$RUNNER_TEMP/nur-packages"
+          git clone --depth 1 "https://x-access-token:${NUR_GITHUB_TOKEN}@github.com/babarot/nur-packages.git" "$nur"
+
+          file="$nur/pkgs/syno/default.nix"
+          prev=$(sed -n 's/^  version = "\(.*\)";$/\1/p' "$file" 2>/dev/null || true)
+          mkdir -p "$(dirname "$file")"
+          .github/scripts/nix-derivation.sh "$TAG" "$RUNNER_TEMP/checksums.txt" > "$file"
+
+          cd "$nur"
+          git add pkgs/syno
+          if git diff --cached --quiet; then
+            echo "nothing to publish"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "syno: ${prev:+$prev -> }$TAG"
+          git push

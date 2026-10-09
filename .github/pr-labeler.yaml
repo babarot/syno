@@ -1,0 +1,10 @@
+changelog/skip:
+  - all:
+    - changed-files:
+      - all-globs-to-all-files:
+        - '!cmd/**'
+        - '!internal/**'
+        - '!main.go'
+        - '!go.mod'
+        - '!go.sum'
+        - '!CHANGELOG.md'
