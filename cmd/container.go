@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,22 +44,10 @@ or printed; use syno api SYNO.Docker.Container list for the raw response.`,
   syno container list --project web --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			client, release, err := connect(ctx)
+			rows, err := listContainers(cmd.Context(), runningOnly, project)
 			if err != nil {
 				return err
 			}
-			defer release()
-
-			cs, err := client.Containers(ctx)
-			if dsm.IsNoAPI(err, dsm.ContainerAPI) {
-				return errors.New("the NAS does not have Container Manager installed")
-			}
-			if err != nil {
-				return err
-			}
-
-			rows := containerRows(cs, runningOnly, project)
 			if asJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
@@ -73,6 +62,24 @@ or printed; use syno api SYNO.Docker.Container list for the raw response.`,
 	c.Flags().StringVar(&project, "project", "", "List only the containers of this Docker Compose project")
 
 	return c
+}
+
+// listContainers lists the containers as syno container list shows them.
+func listContainers(ctx context.Context, runningOnly bool, project string) ([]containerRow, error) {
+	client, release, err := connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	cs, err := client.Containers(ctx)
+	if dsm.IsNoAPI(err, dsm.ContainerAPI) {
+		return nil, errors.New("the NAS does not have Container Manager installed")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return containerRows(cs, runningOnly, project), nil
 }
 
 // containerRow is what syno shows of a container, in the table and in JSON.

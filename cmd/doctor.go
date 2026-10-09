@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -61,33 +63,20 @@ used from cron or a monitoring system:
 				return printChecks(os.Stdout)
 			}
 
-			opts, err := doctorOptions(skip, only)
+			report, err := runDoctor(cmd.Context(), skip, only)
 			if err != nil {
 				return &ExitError{Code: 3, Err: err}
 			}
-
-			ctx := cmd.Context()
-			client, release, err := connect(ctx)
-			if err != nil {
-				return &ExitError{Code: 3, Err: err}
-			}
-			defer release()
-
-			results := doctor.Run(ctx, client, opts)
-			code := doctor.ExitCode(results)
+			code := doctor.ExitCode(report.Results)
 
 			if asJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				if err := enc.Encode(struct {
-					Host    string          `json:"host"`
-					Status  string          `json:"status"`
-					Results []doctor.Result `json:"results"`
-				}{client.Base, exitStatus(code), results}); err != nil {
+				if err := enc.Encode(report); err != nil {
 					return err
 				}
 			} else {
-				printResults(os.Stdout, results, term.IsTerminal(int(os.Stdout.Fd())))
+				printResults(os.Stdout, report.Results, term.IsTerminal(int(os.Stdout.Fd())))
 			}
 
 			if code != 0 {
@@ -104,6 +93,33 @@ used from cron or a monitoring system:
 	c.MarkFlagsMutuallyExclusive("skip", "only")
 
 	return c
+}
+
+// doctorReport is the JSON of syno doctor --json and the syno_doctor MCP
+// tool.
+type doctorReport struct {
+	Host    string          `json:"host"`
+	Status  string          `json:"status"`
+	Results []doctor.Result `json:"results"`
+}
+
+// runDoctor runs the checks with config.yaml and the given --skip or --only.
+func runDoctor(ctx context.Context, skip, only []string) (*doctorReport, error) {
+	if len(skip) > 0 && len(only) > 0 {
+		return nil, errors.New("skip and only cannot be used together")
+	}
+	opts, err := doctorOptions(skip, only)
+	if err != nil {
+		return nil, err
+	}
+	client, release, err := connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	results := doctor.Run(ctx, client, opts)
+	return &doctorReport{Host: client.Base, Status: exitStatus(doctor.ExitCode(results)), Results: results}, nil
 }
 
 // doctorOptions combines config.yaml and the flags into doctor.Options.
