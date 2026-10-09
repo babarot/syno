@@ -1,6 +1,4 @@
-<h1 align="center">
-  <img src="docs/logo.svg" alt="syno" width="360">
-</h1>
+<img src="docs/logo.svg" alt="syno" width="180">
 
 [![Test](https://github.com/babarot/syno/actions/workflows/test.yaml/badge.svg)](https://github.com/babarot/syno/actions/workflows/test.yaml)
 
