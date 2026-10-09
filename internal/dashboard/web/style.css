@@ -120,3 +120,26 @@ footer code { font-family: var(--mono); }
 .ctr .c-fail { overflow-wrap: anywhere; }
 .ctr .top .tag { flex: none; white-space: nowrap; }
 .ctr .name { min-width: 0; }
+
+/* shares treemap */
+.treemap { position: relative; width: 100%; height: 230px; border-radius: 10px; overflow: hidden; }
+.treemap .cell { position: absolute; padding: 6px 8px; color: #fff; font-size: 12px; overflow: hidden; border: 2px solid var(--panel); border-radius: 8px; }
+.treemap .cell b { display: block; font-family: var(--mono); font-size: 13px; }
+.treemap .cell .bin { position: absolute; left: 0; right: 0; bottom: 0; background: repeating-linear-gradient(45deg, rgba(0,0,0,.25) 0 6px, rgba(0,0,0,.1) 6px 12px); border-top: 1px dashed rgba(255,255,255,.7); }
+
+/* recycle */
+.recycle-total { display: flex; align-items: baseline; gap: 10px; }
+.recycle-total .big { font-size: 30px; font-weight: 800; color: var(--warn); }
+.rb { display: grid; grid-template-columns: minmax(80px, 140px) 1fr 80px; gap: 8px; align-items: center; font-size: 12px; margin: 7px 0; }
+.rb .n { font-family: var(--mono); }
+.rb .v { text-align: right; font-family: var(--mono); }
+
+/* packages */
+.updates { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.pkg { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+.pkg .ver { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.pkg .arrow { color: var(--accent); }
+.rb .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw.recycle { background: var(--warn); } .sw.share { background: var(--accent); }
+.sw.hatch { background: repeating-linear-gradient(45deg, #555 0 3px, #999 3px 6px); }
+.legend.below { margin-top: 8px; }

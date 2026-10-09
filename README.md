@@ -249,7 +249,7 @@ Wake-on-LAN has to be on in DSM (Control Panel > Hardware & Power); `syno login`
 
 ### dashboard
 
-Serves a web page on `127.0.0.1` with the health checks, CPU and memory, storage, disks and containers of the NAS, each refreshed at its own pace: CPU and memory every 5 seconds, containers every 30 seconds, storage every minute and the checks every 5 minutes. The page only reads. `syno dash` is short for it.
+Serves a web page on `127.0.0.1` with the health checks, CPU and memory, storage, disks, shared folders, recycle bins, containers and updates of the NAS, each refreshed at its own pace: CPU and memory every 5 seconds, containers every 30 seconds, storage every minute, the checks and shared folders every 5 minutes, and recycle bins and updates hourly. The page only reads. `syno dash` is short for it.
 
 ```console
 $ syno dashboard
@@ -257,7 +257,7 @@ Dashboard: http://127.0.0.1:52817/?token=3f9c...
 Stop with Ctrl-C.
 ```
 
-It opens the URL in a browser unless `--no-open` is given, and listens on any free port unless `--port` is given. The page shows every profile, one tab each, or only the one given by `--profile`. The NAS is asked only while a page is open and in front, with one session per profile, so several open pages cost no more than one. The checks of DSM and package updates are left out, since they make the NAS ask Synology's servers; `syno doctor` runs them.
+It opens the URL in a browser unless `--no-open` is given, and listens on any free port unless `--port` is given. The page shows every profile, one tab each, or only the one given by `--profile`. The NAS is asked only while a page is open and in front, with one session per profile, so several open pages cost no more than one. Two things run only when the page opens and then hourly, each with a button to run it at once: the checks for DSM and package updates, which make the NAS ask Synology's servers, and the sums of the recycle bins, which make the NAS read every file in them.
 
 ### api
 

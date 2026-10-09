@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/babarot/syno/internal/doctor"
@@ -40,7 +41,7 @@ func panelNAS(t *testing.T) *dsm.Client {
 
 func TestReadPanelStorage(t *testing.T) {
 	th := doctor.DefaultThresholds()
-	out, err := readPanel(context.Background(), panelNAS(t), "storage", doctor.Options{}, th)
+	out, err := readPanel(context.Background(), panelNAS(t), "storage", newPanelConfig(doctor.Options{Thresholds: th}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,11 +65,28 @@ func TestReadPanelStorage(t *testing.T) {
 }
 
 func TestReadPanelWithoutContainerManager(t *testing.T) {
-	out, err := readPanel(context.Background(), panelNAS(t), "containers", doctor.Options{}, doctor.Thresholds{})
+	out, err := readPanel(context.Background(), panelNAS(t), "containers", newPanelConfig(doctor.Options{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p, ok := out.(containersPanel); !ok || p.Installed || p.Containers == nil {
 		t.Errorf("got %+v, want not installed with no containers", p)
+	}
+}
+
+func TestNewPanelConfig(t *testing.T) {
+	cfg := newPanelConfig(doctor.Options{Skip: []string{"certificates"}})
+	if !slices.Equal(cfg.doctor.Skip, []string{"certificates", "dsm-update", "package-update"}) {
+		t.Errorf("doctor skips %v", cfg.doctor.Skip)
+	}
+	if !slices.Equal(cfg.updates.Only, updateChecks) || cfg.updates.Skip != nil {
+		t.Errorf("updates runs %v, skips %v", cfg.updates.Only, cfg.updates.Skip)
+	}
+
+	// A check config.yaml skips stays skipped, and shown so, in the doctor
+	// panel.
+	cfg = newPanelConfig(doctor.Options{Skip: []string{"dsm-update"}})
+	if !slices.Equal(cfg.updates.Only, []string{"package-update"}) || !slices.Equal(cfg.hidden, []string{"package-update"}) {
+		t.Errorf("updates runs %v, hides %v", cfg.updates.Only, cfg.hidden)
 	}
 }

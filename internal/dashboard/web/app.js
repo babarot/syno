@@ -73,8 +73,10 @@ function worst(results) {
 
 // ---- panels ----
 
-function drawHealth(d) {
-  const results = d.results;
+// drawHealth shows the doctor checks with the update checks, which the
+// updates panel runs at a slower pace.
+function drawHealth(doc, upd) {
+  const results = [...doc.results, ...(upd?.checks || [])];
   const cnt = { ok: 0, warn: 0, fail: 0, skip: 0, unknown: 0 };
   results.forEach(r => cnt[r.level]++);
   const w = worst(results);
@@ -116,18 +118,28 @@ function drawSystem(sys, info) {
   }
 }
 
-function drawStorage(d) {
+// recycleOn sums the recycle bins of the shares on a volume, or returns null
+// before they are summed.
+function recycleOn(recycle, volume) {
+  if (!recycle) return null;
+  return recycle.shares.filter(s => s.volume === volume).reduce((n, s) => n + (s.recycle_bin_bytes || 0), 0);
+}
+
+function drawStorage(d, recycle) {
   const th = d.thresholds;
   $("volumes").innerHTML = d.volumes.length ? d.volumes.map(v => {
     const pct = v.total_bytes ? v.used_bytes / v.total_bytes * 100 : 0, free = v.total_bytes - v.used_bytes;
     const color = levelColor(pct, th.volume_warn, th.volume_fail);
     const pool = d.pools.find(p => p.name === v.pool);
+    const bin = Math.min(recycleOn(recycle, v.path) ?? 0, v.used_bytes), data = v.used_bytes - bin;
+    const after = v.total_bytes ? data / v.total_bytes * 100 : 0;
     return `<div class="vol">${ring(pct, 100, 140, 14, color, `${pct.toFixed(0)}%`, "used")}
       <div><h3>${esc(v.path)} <span class="tag">${esc(v.fs)}</span> <span class="tag">${esc(v.pool)}</span>${pool ? ` <span class="tag">${esc(pool.type)}</span>` : ""}${v.status !== "normal" ? ` <span class="tag c-fail">${esc(v.status)}${v.detail ? ": " + esc(v.detail) : ""}</span>` : ""}</h3>
       <div style="margin-top:6px"><span class="free" style="color:${color}">${hb(free)}</span> <span class="c-muted">free of ${hb(v.total_bytes)}</span></div>
-      <div class="stackbar"><i style="width:${pct}%;background:${color}"></i></div>
-      <div class="legend"><span><i class="sw" style="background:${color}"></i>used ${hb(v.used_bytes)}</span><span><i class="sw free"></i>free ${hb(free)}</span>
-      <span class="c-muted">· warn at ${th.volume_warn}%, fail at ${th.volume_fail}%</span></div></div></div>`;
+      <div class="stackbar"><i style="width:${data / v.total_bytes * 100}%;background:${color}"></i><i style="width:${bin / v.total_bytes * 100}%;background:var(--warn);opacity:.7"></i></div>
+      <div class="legend"><span><i class="sw" style="background:${color}"></i>data ${hb(data)}</span>${bin ? `<span><i class="sw recycle"></i>recycle bins ${hb(bin)}</span>` : ""}<span><i class="sw free"></i>free ${hb(free)}</span>
+      <span class="c-muted">· warn at ${th.volume_warn}%, fail at ${th.volume_fail}%</span></div>
+      ${pct >= th.volume_warn && pct - after >= 1 ? `<div class="note">Emptying the recycle bins would bring it to ${after.toFixed(1)}%.</div>` : ""}</div></div>`;
   }).join("") : `<div class="empty">No volumes.</div>`;
 
   $("bays").innerHTML = d.disks.length ? d.disks.map(x => {
@@ -151,6 +163,62 @@ function drawStorage(d) {
       <div class="row"><span>Power-on</span>${hours}</div>
       <div class="leds"><span class="led ${x.status === "normal" ? "on" : "bad"}">status ${esc(x.status)}</span><span class="led ${x.smart === "normal" ? "on" : "bad"}">SMART ${esc(x.smart)}</span><span class="led ${bad ? "bad" : "on"}">${x.bad_sectors} bad sectors</span><span class="led">${esc(x.pool)}</span></div></div>`;
   }).join("") : `<div class="empty">No disks.</div>`;
+}
+
+const palette = ["#7a4fe0", "#2bb3c0", "#2f7ae5", "#d0679a", "#4caf7d", "#c98a2b", "#6b7280"];
+
+// drawShares lays the shares out as a treemap, with the part in each
+// recycle bin hatched once the bins are summed.
+function drawShares(d, recycle) {
+  const el = $("treemap");
+  const bins = {};
+  (recycle?.shares || []).forEach(s => { if (s.recycle_bin_bytes != null) bins[s.name] = s.recycle_bin_bytes; });
+  $("treemap-bin").style.display = recycle ? "" : "none";
+  const items = d.shares.map(s => ({ name: s.name, hidden: s.hidden, used: s.used_bytes, bin: bins[s.name] || 0 }));
+  if (!items.length) { el.innerHTML = `<div class="empty">No shared folders.</div>`; return; }
+  const W = el.clientWidth, H = el.clientHeight, size = i => Math.max(i.used, 1), total = items.reduce((n, i) => n + size(i), 0);
+  const cells = [];
+  (function lay(list, x, y, w, h) {
+    if (!list.length) return;
+    if (list.length === 1) { cells.push({ ...list[0], x, y, w, h }); return; }
+    const sum = list.reduce((n, i) => n + size(i), 0);
+    let acc = 0, k = 0;
+    while (k < list.length - 1 && (acc + size(list[k])) / sum < 0.5) acc += size(list[k++]);
+    if (k === 0) acc = size(list[k++]);
+    const f = acc / sum;
+    if (w >= h) { lay(list.slice(0, k), x, y, w * f, h); lay(list.slice(k), x + w * f, y, w * (1 - f), h); }
+    else { lay(list.slice(0, k), x, y, w, h * f); lay(list.slice(k), x, y + h * f, w, h * (1 - f)); }
+  })([...items].sort((a, b) => b.used - a.used), 0, 0, W, H);
+  el.innerHTML = cells.map((c, i) => {
+    const binH = c.bin && c.used ? Math.max(c.h * Math.min(c.bin / c.used, 1), 3) : 0;
+    const small = c.w < 70 || c.h < 40, share = c.used / total * 100;
+    return `<div class="cell" title="${esc(c.name)}: ${hb(c.used)}${c.bin ? `, ${hb(c.bin)} in its recycle bin` : ""}" style="left:${c.x}px;top:${c.y}px;width:${c.w}px;height:${c.h}px;background:${palette[i % palette.length]}">
+      ${small ? "" : `<b>${esc(c.name)}${c.hidden ? " · hidden" : ""}</b>${hb(c.used)} · ${share.toFixed(share < 1 ? 2 : 0)}%`}
+      ${binH ? `<div class="bin" style="height:${binH}px"></div>` : ""}</div>`;
+  }).join("");
+}
+
+function drawRecycle(d) {
+  const on = d.shares.filter(s => s.recycle_bin), off = d.shares.filter(s => !s.recycle_bin);
+  const total = on.reduce((n, s) => n + (s.recycle_bin_bytes || 0), 0);
+  const max = Math.max(...on.map(s => s.recycle_bin_bytes || 0), 1);
+  $("recycle-big").textContent = hb(total);
+  $("recycle-sub").textContent = "would be freed by emptying them";
+  $("recycle").innerHTML = [...on].sort((a, b) => (b.recycle_bin_bytes || 0) - (a.recycle_bin_bytes || 0)).map(s =>
+    `<div class="rb"><span class="n" title="${esc(s.name)}">${esc(s.name)}</span><span class="mini" style="height:10px"><i style="width:${(s.recycle_bin_bytes || 0) / max * 100}%;background:var(--warn)"></i></span><span class="v">${s.recycle_bin_bytes == null ? "-" : hb(s.recycle_bin_bytes)}</span></div>`
+  ).join("") + off.map(s =>
+    `<div class="rb"><span class="n" title="${esc(s.name)}">${esc(s.name)}</span><span class="c-muted">recycle bin off</span><span class="v c-muted">-</span></div>`
+  ).join("");
+}
+
+function drawUpdates(d) {
+  const outdated = d.packages.filter(p => p.latest), sec = outdated.filter(p => p.security).length;
+  const current = d.packages.length - outdated.length;
+  $("upd-head").innerHTML = `${segRing([{ n: sec, color: "var(--fail)" }, { n: outdated.length - sec, color: "var(--warn)" }, { n: current, color: "var(--ok)" }], 104, 12, outdated.length, outdated.length === 1 ? "update" : "updates")}
+    <div><div><span class="dot bg-fail"></span> ${sec} security</div><div><span class="dot bg-warn"></span> ${outdated.length - sec} other</div><div><span class="dot bg-ok"></span> ${current} up to date</div></div>`;
+  const dsm = d.checks.find(c => c.check === "dsm-update");
+  $("dsm-update").innerHTML = dsm ? `<span class="c-${dsm.level === "unknown" ? "muted" : dsm.level}">${esc(dsm.summary)}</span>` : "";
+  $("pkgs").innerHTML = outdated.map(p => `<div class="pkg"><span>${esc(p.name)} ${p.security ? `<span class="tag c-fail">security</span>` : ""}</span><span></span><span class="ver">${esc(p.version)} <span class="arrow">→</span> ${esc(p.latest)}</span></div>`).join("");
 }
 
 function drawContainers(d) {
@@ -193,11 +261,22 @@ function render(panel) {
     if (panel === "system" || panel === "info") drawSystem(get(p, "system")?.data, get(p, "info")?.data);
     return;
   }
+  const data = name => get(p, name)?.data;
   switch (panel) {
-    case "doctor": drawHealth(e.data); break;
-    case "system": case "info": drawSystem(get(p, "system")?.data, get(p, "info")?.data); break;
-    case "storage": drawStorage(e.data); break;
+    case "doctor": drawHealth(e.data, data("updates")); break;
+    case "system": case "info": drawSystem(data("system"), data("info")); break;
+    case "storage": drawStorage(e.data, data("recycle")); break;
     case "containers": drawContainers(e.data); break;
+    case "shares": drawShares(e.data, data("recycle")); break;
+    case "recycle":
+      drawRecycle(e.data);
+      if (data("shares")) drawShares(data("shares"), e.data);
+      if (data("storage")) drawStorage(data("storage"), e.data);
+      break;
+    case "updates":
+      drawUpdates(e.data);
+      if (data("doctor")) drawHealth(data("doctor"), e.data);
+      break;
   }
   if (panel === "info") $("host").textContent = e.data.host;
   drawTabs();
@@ -276,7 +355,8 @@ async function start() {
   };
   const theme = load("syno.theme");
   if (theme) document.documentElement.dataset.theme = theme;
-  document.querySelectorAll("[data-refresh]").forEach(b => b.onclick = () => poll(state.cur, b.dataset.refresh, true));
+  document.querySelectorAll("[data-refresh]").forEach(b => b.onclick = () => b.dataset.refresh.split(" ").forEach(panel => poll(state.cur, panel, true)));
+  addEventListener("resize", () => { const d = get(state.cur, "shares")?.data; if (d) drawShares(d, get(state.cur, "recycle")?.data); });
 
   try {
     const cfg = await api("/api/config");

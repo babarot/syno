@@ -32,7 +32,8 @@ func newDashboardCmd() *cobra.Command {
 		Aliases: []string{"dash"},
 		Short:   "Show the NAS on a web page served on this machine",
 		Long: `Serve a web page on 127.0.0.1 that shows the health checks, CPU and memory,
-storage, disks and containers of the NAS, each refreshed at its own pace.
+storage, disks, shared folders, recycle bins, containers and updates of the
+NAS, each refreshed at its own pace.
 The page only reads; it changes nothing on the NAS.
 
 The page covers every profile, or only the one given by --profile or
@@ -65,26 +66,30 @@ var dashboardPanels = []dashboard.Panel{
 	{Name: "storage", Interval: time.Minute, Timeout: 30 * time.Second},
 	{Name: "containers", Interval: 30 * time.Second, Timeout: 30 * time.Second},
 	{Name: "doctor", Interval: 5 * time.Minute, Timeout: time.Minute},
+	{Name: "shares", Interval: 5 * time.Minute, Timeout: 30 * time.Second},
+	// Summing the recycle bins makes the NAS walk their files, so it is
+	// done when the page opens, then hourly or on the page's button.
+	{Name: "recycle", Interval: time.Hour, Timeout: recycleTimeout + 30*time.Second},
+	{Name: "updates", Interval: time.Hour, Timeout: time.Minute},
 }
 
-// dashboardSkips are the checks the doctor panel leaves out, since they
-// make the NAS ask Synology's servers and are not worth doing every few
-// minutes.
-var dashboardSkips = []string{"dsm-update", "package-update"}
+// updateChecks are the checks that make the NAS ask Synology's servers. The
+// updates panel runs them hourly instead of the doctor panel.
+var updateChecks = []string{"dsm-update", "package-update"}
 
 func runDashboard(ctx context.Context, port int, open bool) error {
 	profiles, err := dashboardProfiles()
 	if err != nil {
 		return err
 	}
-	opts, err := doctorOptions(dashboardSkips, nil)
+	base, err := doctorOptions(nil, nil)
 	if err != nil {
 		return err
 	}
-	th := opts.Thresholds
+	cfg := newPanelConfig(base)
 
 	src := newDashboardSource(profiles, func(ctx context.Context, c *dsm.Client, panel string) (any, error) {
-		return readPanel(ctx, c, panel, opts, th)
+		return readPanel(ctx, c, panel, cfg)
 	})
 	defer src.close()
 
@@ -219,11 +224,42 @@ type (
 		Installed bool `json:"installed"`
 		*containerList
 	}
+	// updatesPanel has every package, to count the ones up to date, and the
+	// results of updateChecks, which the page adds to the health checks.
+	updatesPanel struct {
+		Host     string          `json:"host"`
+		Packages []packageRow    `json:"packages"`
+		Checks   []doctor.Result `json:"checks"`
+	}
 )
 
-// readPanel fetches one panel. opts are the doctor options; their Now is
-// set at each run.
-func readPanel(ctx context.Context, c *dsm.Client, panel string, opts doctor.Options, th doctor.Thresholds) (any, error) {
+// panelConfig is how the panels run the checks.
+type panelConfig struct {
+	// doctor runs every check but updateChecks, and updates only those of
+	// updateChecks that config.yaml does not skip.
+	doctor, updates doctor.Options
+	// hidden are the checks the doctor panel skips only because the
+	// updates panel runs them, so they are not shown as skipped.
+	hidden []string
+}
+
+func newPanelConfig(base doctor.Options) panelConfig {
+	cfg := panelConfig{doctor: base, updates: base}
+	cfg.doctor.Skip = append(slices.Clone(base.Skip), updateChecks...)
+	cfg.updates.Skip = nil
+	cfg.updates.Only = nil
+	for _, name := range updateChecks {
+		if !slices.Contains(base.Skip, name) {
+			cfg.updates.Only = append(cfg.updates.Only, name)
+			cfg.hidden = append(cfg.hidden, name)
+		}
+	}
+	return cfg
+}
+
+// readPanel fetches one panel.
+func readPanel(ctx context.Context, c *dsm.Client, panel string, cfg panelConfig) (any, error) {
+	th := cfg.doctor.Thresholds
 	switch panel {
 	case "system":
 		u, err := c.Utilization(ctx)
@@ -276,14 +312,30 @@ func readPanel(ctx context.Context, c *dsm.Client, panel string, opts doctor.Opt
 		return containersPanel{Installed: true, containerList: l}, nil
 
 	case "doctor":
+		opts := cfg.doctor
 		opts.Now = time.Now()
 		r := readDoctor(ctx, c, opts)
-		// The checks the dashboard skips are not the user's choice, so
-		// they are not shown as skipped.
 		r.Results = slices.DeleteFunc(r.Results, func(x doctor.Result) bool {
-			return x.Level == doctor.Skip && slices.Contains(dashboardSkips, x.Check)
+			return x.Level == doctor.Skip && slices.Contains(cfg.hidden, x.Check)
 		})
 		return r, nil
+
+	case "shares", "recycle":
+		return readShares(ctx, c, panel == "recycle")
+
+	case "updates":
+		l, err := readPackages(ctx, c, false)
+		if err != nil {
+			return nil, err
+		}
+		out := updatesPanel{Host: l.Host, Packages: l.Packages, Checks: []doctor.Result{}}
+		// Only with nothing in it would run every check.
+		if len(cfg.updates.Only) > 0 {
+			opts := cfg.updates
+			opts.Now = time.Now()
+			out.Checks = readDoctor(ctx, c, opts).Results
+		}
+		return out, nil
 	}
 	return nil, fmt.Errorf("unknown panel %q", panel)
 }
