@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -53,19 +54,15 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 			ctx := cmd.Context()
 
 			if list {
-				client, err := listClient(ctx, host)
-				if err != nil {
-					return err
-				}
-				infos, err := client.APIInfo(ctx, "all")
-				if err != nil {
-					return err
-				}
 				filter := ""
 				if len(args) == 1 {
 					filter = args[0]
 				}
-				return printAPIList(infos, filter, asJSON)
+				list, err := listAPIs(ctx, host, filter)
+				if err != nil {
+					return err
+				}
+				return printAPIList(list.APIs, asJSON)
 			}
 
 			if host != "" {
@@ -77,32 +74,11 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 				return err
 			}
 
-			client, release, err := connect(ctx)
+			res, err := callAPI(ctx, api, method, version, params)
 			if err != nil {
 				return err
 			}
-			defer release()
-
-			infos, err := client.APIInfo(ctx, api)
-			if err != nil {
-				return err
-			}
-			info, ok := infos[api]
-			if !ok {
-				return fmt.Errorf("unknown API %q, see `syno api --list`", api)
-			}
-			if version == 0 {
-				version = info.MaxVersion
-			}
-			if info.RequestFormat == "JSON" {
-				jsonEncodeValues(params)
-			}
-
-			data, err := client.Raw(ctx, info.Path, api, version, method, params)
-			if err != nil {
-				return err
-			}
-			return printJSON(data)
+			return printJSON(res.Data)
 		},
 	}
 
@@ -113,6 +89,90 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 	c.Flags().BoolVar(&asJSON, "json", false, "With --list, output as JSON")
 
 	return c
+}
+
+// apiResult is the data field of a DSM response and the NAS that sent it.
+type apiResult struct {
+	Host string          `json:"host"`
+	Data json.RawMessage `json:"data"`
+}
+
+// callAPI calls a DSM API with the selected profile and returns the data
+// field of the response. The path, and the version when it is 0, come from
+// SYNO.API.Info, and so does whether the values must be JSON-encoded.
+func callAPI(ctx context.Context, api, method string, version int, params url.Values) (*apiResult, error) {
+	client, release, err := connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	infos, err := client.APIInfo(ctx, api)
+	if err != nil {
+		return nil, err
+	}
+	info, ok := infos[api]
+	if !ok {
+		return nil, fmt.Errorf("unknown API %q, see `syno api --list`", api)
+	}
+	if version == 0 {
+		version = info.MaxVersion
+	}
+	if info.RequestFormat == "JSON" {
+		jsonEncodeValues(params)
+	}
+	data, err := client.Raw(ctx, info.Path, api, version, method, params)
+	if err != nil {
+		return nil, err
+	}
+	return &apiResult{Host: client.Base, Data: data}, nil
+}
+
+// apiList is the APIs a NAS provides, by name.
+type apiList struct {
+	Host string                 `json:"host"`
+	APIs map[string]dsm.APIInfo `json:"apis"`
+}
+
+// listAPIs returns the APIs the NAS provides whose name contains filter,
+// ignoring case. It needs no login.
+func listAPIs(ctx context.Context, host, filter string) (*apiList, error) {
+	client, err := listClient(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	infos, err := client.APIInfo(ctx, "all")
+	if err != nil {
+		return nil, err
+	}
+	for name := range infos {
+		if !strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
+			delete(infos, name)
+		}
+	}
+	return &apiList{Host: client.Base, APIs: infos}, nil
+}
+
+// readMethods and readPrefixes are the DSM methods syno mcp --allow-api
+// calls through syno_api. DSM does not say which methods change the NAS, so
+// the names are the guide, and a name not listed here is refused. This
+// lowers the chance of a change, without ruling it out.
+var (
+	readMethods  = []string{"list", "get", "info", "load_info", "query", "status"}
+	readPrefixes = []string{"get_", "list_", "load_"}
+)
+
+// isReadMethod tells whether method is one whose name says it only reads.
+func isReadMethod(method string) bool {
+	if slices.Contains(readMethods, method) {
+		return true
+	}
+	for _, p := range readPrefixes {
+		if strings.HasPrefix(method, p) && len(method) > len(p) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseFields(fields []string) (url.Values, error) {
@@ -140,24 +200,18 @@ func jsonEncodeValues(params url.Values) {
 	}
 }
 
-func printAPIList(infos map[string]dsm.APIInfo, filter string, asJSON bool) error {
-	names := make([]string, 0, len(infos))
-	for name := range infos {
-		if strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-
+func printAPIList(infos map[string]dsm.APIInfo, asJSON bool) error {
 	if asJSON {
-		out := make(map[string]dsm.APIInfo, len(names))
-		for _, name := range names {
-			out[name] = infos[name]
-		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(out)
+		return enc.Encode(infos)
 	}
+
+	names := make([]string, 0, len(infos))
+	for name := range infos {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 	fmt.Fprintln(w, "API\tVERSIONS\tPATH\tFORMAT")

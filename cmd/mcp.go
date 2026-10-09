@@ -2,37 +2,62 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/babarot/syno/internal/config"
 	"github.com/babarot/syno/internal/version"
 )
 
 func newMCPCmd() *cobra.Command {
-	return &cobra.Command{
+	var allowAPI bool
+
+	c := &cobra.Command{
 		Use:   "mcp",
 		Short: "Run an MCP server that answers questions about the NAS",
 		Long: `Run an MCP server over stdio, so that an AI assistant such as Claude Code can
 look at the NAS. The tools only read: the status, the doctor checks, the
 containers and the packages, with the same JSON as the --json output of the
-commands. Nothing on the NAS is changed, and syno api is not offered.
+commands, and the list of the DSM APIs the NAS provides.
 
-The NAS is the one of the profile chosen at start (--profile, then
-SYNO_PROFILE, then the current profile). Register one server per NAS:
+With --allow-api, the syno_api tool also calls DSM APIs, refusing methods
+whose name does not say they only read. Even methods that only read can
+return secrets, such as the environment variables of containers or the
+passwords of notification, DDNS and backup settings, and what a tool returns
+is sent to the provider of the AI. Allow it only if you accept that.
+
+Each tool call uses the profile given by --profile or SYNO_PROFILE, or else
+the current profile at the time of the call; the host in each answer tells
+which NAS answered. The server starts without a profile too, and its tools
+then answer that syno login is needed, so the assistant can ask for it.
+Register one server per NAS:
 
   claude mcp add syno -- syno mcp
   claude mcp add syno-office -- syno mcp --profile office`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Fail at start, where the MCP client shows the error, rather than
-			// on every tool call.
-			if _, _, err := selectProfile(); err != nil {
+			if err := checkMCPStart(); err != nil {
 				return err
 			}
-			return newMCPServer(nasBackend{}).Run(cmd.Context(), &mcp.StdioTransport{})
+			return newMCPServer(nasBackend{}, allowAPI).Run(cmd.Context(), &mcp.StdioTransport{})
 		},
 	}
+
+	c.Flags().BoolVar(&allowAPI, "allow-api", false, "Offer syno_api, which calls DSM APIs and can return secrets to the AI")
+
+	return c
+}
+
+// checkMCPStart fails on a broken profiles.yaml, at start where the MCP
+// client shows it. A missing profile does not fail: the tools tell the
+// assistant to ask for syno login, which a server that failed could not.
+func checkMCPStart() error {
+	_, err := config.LoadProfiles()
+	return err
 }
 
 // backend answers the tools. nasBackend asks the NAS; tests use a fake.
@@ -41,6 +66,8 @@ type backend interface {
 	Doctor(ctx context.Context, skip, only []string) (any, error)
 	Containers(ctx context.Context, runningOnly bool, project string) (any, error)
 	Packages(ctx context.Context, outdated bool) (any, error)
+	APIList(ctx context.Context, filter string) (any, error)
+	API(ctx context.Context, api, method string, version int, params url.Values) (any, error)
 }
 
 type nasBackend struct{}
@@ -65,6 +92,14 @@ func (nasBackend) Packages(ctx context.Context, outdated bool) (any, error) {
 	return listPackages(ctx, outdated)
 }
 
+func (nasBackend) APIList(ctx context.Context, filter string) (any, error) {
+	return listAPIs(ctx, "", filter)
+}
+
+func (nasBackend) API(ctx context.Context, api, method string, version int, params url.Values) (any, error) {
+	return callAPI(ctx, api, method, version, params)
+}
+
 type (
 	noInput     struct{}
 	doctorInput struct {
@@ -78,10 +113,32 @@ type (
 	packagesInput struct {
 		Outdated bool `json:"outdated,omitempty" jsonschema:"List only the packages with an update"`
 	}
+	apiListInput struct {
+		Filter string `json:"filter,omitempty" jsonschema:"List only the APIs whose name contains this, ignoring case, such as share or backup"`
+	}
+	apiInput struct {
+		API     string            `json:"api" jsonschema:"API name, such as SYNO.Core.Share"`
+		Method  string            `json:"method" jsonschema:"Method that only reads: list, get, info, load_info, query, status, or one starting with get_, list_ or load_"`
+		Version int               `json:"version,omitempty" jsonschema:"API version (default: the latest the NAS supports)"`
+		Params  map[string]string `json:"params,omitempty" jsonschema:"Parameters. For APIs whose request format is JSON, values that are not valid JSON are sent as JSON strings; quote a number the API expects as a string"`
+	}
 )
 
-func newMCPServer(b backend) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "syno", Version: version.Version}, nil)
+// mcpInstructions tells the assistant how the tools fit together, with or
+// without syno_api.
+func mcpInstructions(allowAPI bool) string {
+	other := "Other questions need syno_api, which this server does not offer: say so, and that the user can start the server with syno mcp --allow-api, which lets DSM settings, secrets among them, reach the provider of the AI. syno_api_list shows what the NAS provides."
+	if allowAPI {
+		other = "For anything else, find an API with syno_api_list and call it with syno_api. DSM does not list methods, so try list, get or info, and another when DSM answers that the method does not exist (code 103). Ask only for what the question needs: the answers can hold secrets."
+	}
+	return `These tools read a Synology NAS and never change it.
+Start with syno_doctor for whether the NAS is healthy, syno_status for space, disks and load, syno_containers and syno_packages for those. ` + other + `
+Each call uses the current profile unless the server was started with one, and the user can switch it between calls: the host in each answer tells which NAS answered.
+When a tool answers that syno login is needed or that a certificate is not trusted, do not work around it: ask the user to run the command it names in a terminal, since it asks for a password and confirmations.`
+}
+
+func newMCPServer(b backend, allowAPI bool) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "syno", Version: version.Version}, &mcp.ServerOptions{Instructions: mcpInstructions(allowAPI)})
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -118,6 +175,37 @@ func newMCPServer(b backend) *mcp.Server {
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in packagesInput) (*mcp.CallToolResult, any, error) {
 		out, err := b.Packages(ctx, in.Outdated)
+		return nil, out, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "syno_api_list",
+		Description: "List the DSM Web APIs the Synology NAS provides, with their path, versions and request format. Use this to find an API for a question the other tools do not answer, such as shared folders, users, backups or logs, and call it with syno_api when the server offers it.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in apiListInput) (*mcp.CallToolResult, any, error) {
+		out, err := b.APIList(ctx, in.Filter)
+		return nil, out, err
+	})
+
+	if !allowAPI {
+		return s
+	}
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "syno_api",
+		Description: "Call a DSM Web API on the Synology NAS and return the data field of the response. Only methods whose name says they read are called: list, get, info, load_info, query, status, and ones starting with get_, list_ or load_; others are refused. " +
+			"DSM does not list the methods of an API, and answers code 103 for one that does not exist. The data can hold secrets, such as environment variables or passwords in settings: ask only for what the question needs.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in apiInput) (*mcp.CallToolResult, any, error) {
+		if !isReadMethod(in.Method) {
+			return nil, nil, fmt.Errorf("method %q is refused because its name does not say it only reads; syno_api calls %s, and methods starting with %s",
+				in.Method, strings.Join(readMethods, ", "), strings.Join(readPrefixes, ", "))
+		}
+		params := url.Values{}
+		for k, v := range in.Params {
+			params.Set(k, v)
+		}
+		out, err := b.API(ctx, in.API, in.Method, in.Version, params)
 		return nil, out, err
 	})
 
