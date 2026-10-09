@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 484 144" width="968" height="288">
+  <title>syno</title>
+  <defs>
+    <radialGradient id="g" cx="0.43" cy="0.58" r="0.6">
+      <stop offset="0.000" stop-color="#ffffff"/>
+      <stop offset="0.025" stop-color="#f5f5f5"/>
+      <stop offset="0.125" stop-color="#c3c3c3"/>
+      <stop offset="0.225" stop-color="#8d8d8d"/>
+      <stop offset="0.275" stop-color="#897089"/>
+      <stop offset="0.325" stop-color="#985498"/>
+      <stop offset="0.375" stop-color="#a13ea1"/>
+      <stop offset="0.475" stop-color="#a324a3"/>
+      <stop offset="0.575" stop-color="#a252a2"/>
+      <stop offset="0.675" stop-color="#a288a2"/>
+      <stop offset="0.725" stop-color="#9d9ba2"/>
+      <stop offset="0.825" stop-color="#6974a2"/>
+      <stop offset="0.925" stop-color="#3349a2"/>
+      <stop offset="1.000" stop-color="#2b3c98"/>
+    </radialGradient>
+    <circle id="d" r="10" fill="url(#g)"/>
+  </defs>
+  <use href="#d" x="42" y="22"/>
+  <use href="#d" x="62" y="22"/>
+  <use href="#d" x="82" y="22"/>
+  <use href="#d" x="102" y="22"/>
+  <use href="#d" x="142" y="22"/>
+  <use href="#d" x="162" y="22"/>
+  <use href="#d" x="222" y="22"/>
+  <use href="#d" x="262" y="22"/>
+  <use href="#d" x="302" y="22"/>
+  <use href="#d" x="322" y="22"/>
+  <use href="#d" x="402" y="22"/>
+  <use href="#d" x="422" y="22"/>
+  <use href="#d" x="442" y="22"/>
+  <use href="#d" x="22" y="42"/>
+  <use href="#d" x="42" y="42"/>
+  <use href="#d" x="142" y="42"/>
+  <use href="#d" x="162" y="42"/>
+  <use href="#d" x="222" y="42"/>
+  <use href="#d" x="262" y="42"/>
+  <use href="#d" x="282" y="42"/>
+  <use href="#d" x="322" y="42"/>
+  <use href="#d" x="342" y="42"/>
+  <use href="#d" x="382" y="42"/>
+  <use href="#d" x="402" y="42"/>
+  <use href="#d" x="442" y="42"/>
+  <use href="#d" x="462" y="42"/>
+  <use href="#d" x="22" y="62"/>
+  <use href="#d" x="42" y="62"/>
+  <use href="#d" x="62" y="62"/>
+  <use href="#d" x="82" y="62"/>
+  <use href="#d" x="102" y="62"/>
+  <use href="#d" x="142" y="62"/>
+  <use href="#d" x="162" y="62"/>
+  <use href="#d" x="182" y="62"/>
+  <use href="#d" x="222" y="62"/>
+  <use href="#d" x="262" y="62"/>
+  <use href="#d" x="282" y="62"/>
+  <use href="#d" x="342" y="62"/>
+  <use href="#d" x="382" y="62"/>
+  <use href="#d" x="402" y="62"/>
+  <use href="#d" x="462" y="62"/>
+  <use href="#d" x="82" y="82"/>
+  <use href="#d" x="102" y="82"/>
+  <use href="#d" x="162" y="82"/>
+  <use href="#d" x="182" y="82"/>
+  <use href="#d" x="222" y="82"/>
+  <use href="#d" x="262" y="82"/>
+  <use href="#d" x="282" y="82"/>
+  <use href="#d" x="342" y="82"/>
+  <use href="#d" x="382" y="82"/>
+  <use href="#d" x="402" y="82"/>
+  <use href="#d" x="462" y="82"/>
+  <use href="#d" x="22" y="102"/>
+  <use href="#d" x="42" y="102"/>
+  <use href="#d" x="62" y="102"/>
+  <use href="#d" x="82" y="102"/>
+  <use href="#d" x="182" y="102"/>
+  <use href="#d" x="202" y="102"/>
+  <use href="#d" x="262" y="102"/>
+  <use href="#d" x="282" y="102"/>
+  <use href="#d" x="342" y="102"/>
+  <use href="#d" x="402" y="102"/>
+  <use href="#d" x="422" y="102"/>
+  <use href="#d" x="442" y="102"/>
+  <use href="#d" x="142" y="122"/>
+  <use href="#d" x="162" y="122"/>
+  <use href="#d" x="182" y="122"/>
+</svg>
