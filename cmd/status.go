@@ -16,7 +16,6 @@ import (
 )
 
 func newStatusCmd() *cobra.Command {
-	var host string
 	var raw bool
 
 	c := &cobra.Command{
@@ -24,7 +23,7 @@ func newStatusCmd() *cobra.Command {
 		Short: "Show system, utilization, volumes and disks of the NAS",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			client, err := connect(ctx, host)
+			client, err := connect(ctx)
 			if err != nil {
 				return err
 			}
@@ -59,7 +58,6 @@ func newStatusCmd() *cobra.Command {
 		},
 	}
 
-	c.Flags().StringVar(&host, "host", "", "DSM URL (default: the one saved by `syno login`)")
 	c.Flags().BoolVar(&raw, "raw", false, "Print the raw API responses as JSON")
 
 	return c

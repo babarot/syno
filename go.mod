@@ -3,6 +3,7 @@ module github.com/babarot/syno
 go 1.26.8
 
 require (
+	github.com/goccy/go-yaml v1.19.2
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/miekg/dns v1.1.27
 	github.com/spf13/cobra v1.10.2

@@ -13,9 +13,12 @@ func NewRootCmd(version, revision string) *cobra.Command {
 		Version:       version + " (" + revision + ")",
 	}
 
+	root.PersistentFlags().StringVarP(&profileFlag, "profile", "p", "", "Profile to use (default: $SYNO_PROFILE, then the current profile)")
+
 	root.AddCommand(
 		newDiscoverCmd(),
 		newLoginCmd(),
+		newProfileCmd(),
 		newStatusCmd(),
 		newDoctorCmd(),
 		newAPICmd(),

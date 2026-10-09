@@ -16,7 +16,6 @@ import (
 )
 
 func newDoctorCmd() *cobra.Command {
-	var host string
 	var asJSON bool
 
 	c := &cobra.Command{
@@ -34,7 +33,7 @@ used from cron or a monitoring system:
   3  a check could not run, or the NAS could not be reached`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			client, err := connect(ctx, host)
+			client, err := connect(ctx)
 			if err != nil {
 				return &ExitError{Code: 3, Err: err}
 			}
@@ -64,7 +63,6 @@ used from cron or a monitoring system:
 		},
 	}
 
-	c.Flags().StringVar(&host, "host", "", "DSM URL (default: the one saved by `syno login`)")
 	c.Flags().BoolVar(&asJSON, "json", false, "Output as JSON")
 
 	return c

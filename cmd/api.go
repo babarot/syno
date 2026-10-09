@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,7 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/babarot/syno/internal/config"
 	"github.com/babarot/syno/internal/dsm"
 )
 
@@ -52,11 +53,7 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 			ctx := cmd.Context()
 
 			if list {
-				cfg, err := config.Load()
-				if err != nil {
-					return err
-				}
-				base, err := resolveHost(ctx, host, cfg)
+				base, err := listHost(ctx, host)
 				if err != nil {
 					return err
 				}
@@ -71,13 +68,16 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 				return printAPIList(infos, filter, asJSON)
 			}
 
+			if host != "" {
+				return errors.New("--host only works with --list, other calls use the profile")
+			}
 			api, method := args[0], args[1]
 			params, err := parseFields(fields)
 			if err != nil {
 				return err
 			}
 
-			client, err := connect(ctx, host)
+			client, err := connect(ctx)
 			if err != nil {
 				return err
 			}
@@ -106,7 +106,7 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 		},
 	}
 
-	c.Flags().StringVar(&host, "host", "", "DSM URL (default: the one saved by `syno login`)")
+	c.Flags().StringVar(&host, "host", "", "With --list, DSM URL to ask (default: the profile, then discover)")
 	c.Flags().IntVarP(&version, "version", "v", 0, "API version (default: the latest the NAS supports)")
 	c.Flags().StringArrayVarP(&fields, "field", "f", nil, "Add a parameter in key=value form (repeatable)")
 	c.Flags().BoolVar(&list, "list", false, "List the APIs the NAS provides, optionally filtered by a substring")
@@ -179,4 +179,17 @@ func printJSON(data json.RawMessage) error {
 	buf.WriteByte('\n')
 	_, err := buf.WriteTo(os.Stdout)
 	return err
+}
+
+// listHost picks the DSM to ask for --list, which needs no login: --host,
+// then the selected profile, then discovery.
+func listHost(ctx context.Context, host string) (string, error) {
+	if host != "" {
+		return host, nil
+	}
+	if _, p, err := selectProfile(); err == nil {
+		return p.URL, nil
+	}
+	u, _, err := discoverOne(ctx)
+	return u, err
 }

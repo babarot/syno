@@ -23,30 +23,57 @@ func newLoginCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "login",
-		Short: "Save a DSM account to use with other commands",
-		Long: `Log in to DSM once to check the account, then save the host and user to
-~/.config/syno/config.json and the password to the macOS keychain.
+		Short: "Log in to a NAS and save it as a profile",
+		Long: `Log in to DSM once to check the account, then save the NAS and the user as
+a profile in ~/.config/syno/config.yaml and the password to the OS keyring.
+
+Without --host, the NAS is found on the local network. Without --profile, the
+profile is named after the NAS, and an existing profile for the same URL and
+user is updated. The first profile becomes the current one.
 
 Storage information needs an account in the administrators group. When the
 account uses 2FA, you are asked for a code once and the device token DSM
 issues is saved so that later commands do not ask again.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			// Not loadConfig: logging in is how users move off config.json.
 			cfg, err := config.Load()
 			if err != nil {
 				return err
 			}
-			if host, err = resolveHost(ctx, host, cfg); err != nil {
-				return err
+
+			name := profileName()
+			var existing *config.Profile
+			if name != "" {
+				existing = cfg.Profiles[name]
 			}
-			if user == "" {
-				user = cfg.User
+
+			var mdnsName string
+			switch {
+			case host != "":
+			case existing != nil:
+				host = existing.URL
+			default:
+				if host, mdnsName, err = discoverOne(ctx); err != nil {
+					return err
+				}
+			}
+			if user == "" && existing != nil {
+				user = existing.User
 			}
 			if user == "" {
 				if user, err = prompt("User: ", false); err != nil {
 					return err
 				}
 			}
+			if name == "" {
+				if n, ok := cfg.FindByURL(host, user); ok {
+					name = n
+				} else {
+					name = defaultProfileName(mdnsName, host)
+				}
+			}
+
 			password, err := prompt(fmt.Sprintf("Password for %s@%s: ", user, host), true)
 			if err != nil {
 				return err
@@ -74,11 +101,11 @@ issues is saved so that later commands do not ask again.`,
 					return err
 				}
 			}
-			cfg.Host, cfg.User = host, user
-			if err := config.Save(cfg); err != nil {
+			cfg.Set(name, &config.Profile{URL: host, User: user})
+			if err := cfg.Save(); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "Logged in to %s as %s.\n", host, user)
+			fmt.Fprintf(os.Stderr, "Logged in to %s as %s, saved as profile %q.\n", host, user, name)
 			return nil
 		},
 	}
