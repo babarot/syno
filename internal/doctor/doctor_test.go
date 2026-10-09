@@ -18,6 +18,8 @@ type fakeSource struct {
 	upgrade *dsm.UpgradeCheck
 	scan    *dsm.SecurityScan
 	certs   []dsm.Certificate
+	ctrs    []dsm.Container
+	ctrsErr error
 	err     error
 	stHits  int
 }
@@ -41,6 +43,12 @@ func (f *fakeSource) SecurityScan(context.Context) (*dsm.SecurityScan, error) {
 	return f.scan, f.err
 }
 func (f *fakeSource) Certificates(context.Context) ([]dsm.Certificate, error) { return f.certs, f.err }
+func (f *fakeSource) Containers(context.Context) ([]dsm.Container, error) {
+	if f.ctrsErr != nil {
+		return nil, f.ctrsErr
+	}
+	return f.ctrs, f.err
+}
 
 func healthyScan() *dsm.SecurityScan {
 	var s dsm.SecurityScan

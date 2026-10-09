@@ -120,6 +120,7 @@ type Source interface {
 	CheckUpgrade(ctx context.Context) (*dsm.UpgradeCheck, error)
 	SecurityScan(ctx context.Context) (*dsm.SecurityScan, error)
 	Certificates(ctx context.Context) ([]dsm.Certificate, error)
+	Containers(ctx context.Context) ([]dsm.Container, error)
 }
 
 // Env is passed to every check.
@@ -148,6 +149,7 @@ var Checks = []Check{
 	{"dsm-update", "DSM is up to date (the NAS asks Synology's update server)", checkDSMUpdate},
 	{"security-advisor", "Security Advisor has no findings and scanned recently", checkSecurityAdvisor},
 	{"certificates", "Certificates are valid and not about to expire", checkCertificates},
+	{"containers", "Running containers are healthy and none keeps restarting (skipped without Container Manager)", checkContainers},
 }
 
 // CheckNames returns the names of every check, in report order.

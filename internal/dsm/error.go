@@ -57,3 +57,10 @@ func IsOTPRequired(err error) bool {
 	var e *APIError
 	return errors.As(err, &e) && e.API == "SYNO.API.Auth" && e.Code == 403
 }
+
+// IsNoAPI reports whether a call to api failed because the API does not
+// exist, which usually means the package that provides it is not installed.
+func IsNoAPI(err error, api string) bool {
+	var e *APIError
+	return errors.As(err, &e) && e.API == api && e.Code == 102
+}
