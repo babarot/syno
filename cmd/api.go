@@ -77,11 +77,11 @@ With --list, print the APIs the NAS provides. This needs no login.`,
 				return err
 			}
 
-			client, err := connect(ctx)
+			client, release, err := connect(ctx)
 			if err != nil {
 				return err
 			}
-			defer logout(ctx, client)
+			defer release()
 
 			infos, err := client.APIInfo(ctx, api)
 			if err != nil {

@@ -20,6 +20,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(
 		newDiscoverCmd(),
 		newLoginCmd(),
+		newLogoutCmd(),
 		newProfileCmd(),
 		newStatusCmd(),
 		newDoctorCmd(),

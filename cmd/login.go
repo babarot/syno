@@ -106,7 +106,10 @@ issues is saved so that later commands do not ask again.`,
 			if err != nil {
 				return err
 			}
-			logout(ctx, client)
+			// Log out unless the session gets saved below, so that a failure
+			// in between does not leave it on the NAS.
+			release := func() { _ = client.Logout(ctx) }
+			defer func() { release() }()
 
 			if err := credential.SetPassword(host, user, password); err != nil {
 				return err
@@ -120,6 +123,8 @@ issues is saved so that later commands do not ask again.`,
 			if err := cfg.Save(); err != nil {
 				return err
 			}
+			// Later commands resume this session instead of logging in again.
+			release = saveSession(ctx, client, keyringStore{}, host, user)
 			fmt.Fprintf(os.Stderr, "Logged in to %s as %s, saved as profile %q.\n", host, user, name)
 			return nil
 		},

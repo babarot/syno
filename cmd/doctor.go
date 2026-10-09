@@ -67,11 +67,11 @@ used from cron or a monitoring system:
 			}
 
 			ctx := cmd.Context()
-			client, err := connect(ctx)
+			client, release, err := connect(ctx)
 			if err != nil {
 				return &ExitError{Code: 3, Err: err}
 			}
-			defer logout(ctx, client)
+			defer release()
 
 			results := doctor.Run(ctx, client, opts)
 			code := doctor.ExitCode(results)
