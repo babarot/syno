@@ -166,6 +166,24 @@ syno container list --running
 syno container list --project web --json
 ```
 
+### package
+
+Lists the installed packages with the latest version in Package Center. LATEST shows the newer version when there is one, marked `(security)` for a security update, `-` when the package is up to date, and `?` when Package Center does not know the package, as with third-party ones. Nothing is updated.
+
+```console
+$ syno package list
+ID            NAME            VERSION        LATEST                     STATUS
+FileStation   File Station    1.4.2-1575     -                          running
+git           Git             2.53.0-40      ?                          running
+MariaDB10     MariaDB 10      10.11.6-1369   10.11.11-1551 (security)   stop
+WebStation    Web Station     4.2.3-0522     4.3.1-0530                 running
+```
+
+```bash
+syno package list --outdated
+syno package list --json
+```
+
 ### api
 
 Calls any DSM Web API with the saved account and prints the `data` field of the response as JSON. DSM has hundreds of APIs and few are documented, so this is the way to look around. The path and the latest version of each API come from `SYNO.API.Info`.

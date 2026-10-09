@@ -25,6 +25,7 @@ func NewRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newAPICmd(),
 		newContainerCmd(),
+		newPackageCmd(),
 	)
 
 	return root
