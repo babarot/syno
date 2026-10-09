@@ -1,1 +1,4 @@
-bin/
+/syno
+/bin/
+/dist/
+coverage.out
