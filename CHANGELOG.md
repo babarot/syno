@@ -7,6 +7,7 @@
 - Add syno mcp to answer questions about the NAS by @babarot in https://github.com/babarot/syno/pull/7
 - Let syno mcp find DSM APIs and start without a profile by @babarot in https://github.com/babarot/syno/pull/8
 - Add an agent skill for answering questions about the NAS by @babarot in https://github.com/babarot/syno/pull/9
+- Ship syno as a Claude Code plugin by @babarot in https://github.com/babarot/syno/pull/10
 ### Improvements
 - Reuse the DSM session across commands by @babarot in https://github.com/babarot/syno/pull/6
 ### Refactorings
