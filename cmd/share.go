@@ -85,7 +85,11 @@ func listShares(ctx context.Context, recycle bool) (*shareList, error) {
 		return nil, err
 	}
 	defer release()
+	return readShares(ctx, client, recycle)
+}
 
+// readShares is listShares with a client that is already logged in.
+func readShares(ctx context.Context, client *dsm.Client, recycle bool) (*shareList, error) {
 	ss, err := client.Shares(ctx)
 	if err != nil {
 		return nil, err

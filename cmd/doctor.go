@@ -17,6 +17,7 @@ import (
 
 	"github.com/babarot/syno/internal/config"
 	"github.com/babarot/syno/internal/doctor"
+	"github.com/babarot/syno/internal/dsm"
 )
 
 func newDoctorCmd() *cobra.Command {
@@ -105,9 +106,6 @@ type doctorReport struct {
 
 // runDoctor runs the checks with config.yaml and the given --skip or --only.
 func runDoctor(ctx context.Context, skip, only []string) (*doctorReport, error) {
-	if len(skip) > 0 && len(only) > 0 {
-		return nil, errors.New("skip and only cannot be used together")
-	}
 	opts, err := doctorOptions(skip, only)
 	if err != nil {
 		return nil, err
@@ -117,13 +115,20 @@ func runDoctor(ctx context.Context, skip, only []string) (*doctorReport, error) 
 		return nil, err
 	}
 	defer release()
+	return readDoctor(ctx, client, opts), nil
+}
 
+// readDoctor runs the checks with a client that is already logged in.
+func readDoctor(ctx context.Context, client *dsm.Client, opts doctor.Options) *doctorReport {
 	results := doctor.Run(ctx, client, opts)
-	return &doctorReport{Host: client.Base, Status: exitStatus(doctor.ExitCode(results)), Results: results}, nil
+	return &doctorReport{Host: client.Base, Status: exitStatus(doctor.ExitCode(results)), Results: results}
 }
 
 // doctorOptions combines config.yaml and the flags into doctor.Options.
 func doctorOptions(skip, only []string) (doctor.Options, error) {
+	if len(skip) > 0 && len(only) > 0 {
+		return doctor.Options{}, errors.New("skip and only cannot be used together")
+	}
 	settings, err := config.LoadSettings()
 	if err != nil {
 		return doctor.Options{}, err

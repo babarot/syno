@@ -106,7 +106,11 @@ func callAPI(ctx context.Context, api, method string, version int, params url.Va
 		return nil, err
 	}
 	defer release()
+	return callAPIWith(ctx, client, api, method, version, params)
+}
 
+// callAPIWith is callAPI with a client that is already logged in.
+func callAPIWith(ctx context.Context, client *dsm.Client, api, method string, version int, params url.Values) (*apiResult, error) {
 	infos, err := client.APIInfo(ctx, api)
 	if err != nil {
 		return nil, err

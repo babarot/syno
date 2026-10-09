@@ -83,7 +83,11 @@ func loadStatus(ctx context.Context) (*status, error) {
 		return nil, err
 	}
 	defer release()
+	return readStatus(ctx, client)
+}
 
+// readStatus is loadStatus with a client that is already logged in.
+func readStatus(ctx context.Context, client *dsm.Client) (*status, error) {
 	s := &status{host: client.Base}
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() (err error) { s.sys, err = client.SystemInfo(gctx); return })

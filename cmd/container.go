@@ -98,7 +98,11 @@ func listContainers(ctx context.Context, opts containerListOptions) (*containerL
 		return nil, err
 	}
 	defer release()
+	return readContainers(ctx, client, opts)
+}
 
+// readContainers is listContainers with a client that is already logged in.
+func readContainers(ctx context.Context, client *dsm.Client, opts containerListOptions) (*containerList, error) {
 	cs, err := client.Containers(ctx)
 	if dsm.IsNoAPI(err, dsm.ContainerAPI) {
 		return nil, errors.New("the NAS does not have Container Manager installed")

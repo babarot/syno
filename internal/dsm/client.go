@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,7 +22,13 @@ const session = "syno"
 type Client struct {
 	Base string
 	http *http.Client
-	sid  string
+
+	// mu guards sid, which a long-running command replaces while other
+	// calls are in flight.
+	mu  sync.RWMutex
+	sid string
+	// lost counts the answers that said the session is gone.
+	lost atomic.Uint64
 }
 
 // New returns a client that verifies the server certificate. With an empty
@@ -88,17 +96,17 @@ func (c *Client) Login(ctx context.Context, o LoginOptions) (deviceID string, er
 	if err := c.Call(ctx, "SYNO.API.Auth", 6, "login", params, &out); err != nil {
 		return "", err
 	}
-	c.sid = out.SID
+	c.SetSID(out.SID)
 	return out.DID, nil
 }
 
 // Logout closes the session. Errors are ignored by most callers.
 func (c *Client) Logout(ctx context.Context) error {
-	if c.sid == "" {
+	if c.SID() == "" {
 		return nil
 	}
 	err := c.Call(ctx, "SYNO.API.Auth", 6, "logout", url.Values{"session": {session}}, nil)
-	c.sid = ""
+	c.SetSID("")
 	return err
 }
 
@@ -125,8 +133,8 @@ func (c *Client) CallPath(ctx context.Context, path, api string, version int, me
 	form.Set("api", api)
 	form.Set("version", strconv.Itoa(version))
 	form.Set("method", method)
-	if c.sid != "" {
-		form.Set("_sid", c.sid)
+	if sid := c.SID(); sid != "" {
+		form.Set("_sid", sid)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/webapi/"+path, strings.NewReader(form.Encode()))
@@ -158,7 +166,11 @@ func (c *Client) CallPath(ctx context.Context, path, api string, version int, me
 		if body.Error != nil {
 			code = body.Error.Code
 		}
-		return &APIError{API: api, Method: method, Code: code}
+		err := &APIError{API: api, Method: method, Code: code}
+		if IsSessionGone(err) {
+			c.lost.Add(1)
+		}
+		return err
 	}
 	if out == nil || len(body.Data) == 0 {
 		return nil
@@ -174,7 +186,21 @@ func (c *Client) CallPath(ctx context.Context, path, api string, version int, me
 }
 
 // SID returns the session ID of the logged in session, or "".
-func (c *Client) SID() string { return c.sid }
+func (c *Client) SID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.sid
+}
 
 // SetSID resumes a session saved from an earlier login.
-func (c *Client) SetSID(sid string) { c.sid = sid }
+func (c *Client) SetSID(sid string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sid = sid
+}
+
+// SessionLosses counts the answers so far that said the session is gone.
+// Comparing it before and after some work tells whether the session was
+// lost during it, even where the error itself was turned into a message,
+// as in the doctor results.
+func (c *Client) SessionLosses() uint64 { return c.lost.Load() }

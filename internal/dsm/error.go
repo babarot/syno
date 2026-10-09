@@ -64,3 +64,11 @@ func IsNoAPI(err error, api string) bool {
 	var e *APIError
 	return errors.As(err, &e) && e.API == api && e.Code == 102
 }
+
+// IsSessionGone reports whether a call failed because DSM no longer accepts
+// the session: it timed out (106), another login interrupted it (107), or
+// DSM does not know it (119). Logging in again fixes these.
+func IsSessionGone(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && (e.Code == 106 || e.Code == 107 || e.Code == 119)
+}
