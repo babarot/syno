@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -119,7 +122,7 @@ issues is saved so that later commands do not ask again.`,
 					return err
 				}
 			}
-			cfg.Set(name, &config.Profile{URL: host, User: user, TLS: config.TLS{Pin: pin}})
+			cfg.Set(name, &config.Profile{URL: host, User: user, TLS: config.TLS{Pin: pin}, MACs: wakeMACs(ctx, client)})
 			if err := cfg.Save(); err != nil {
 				return err
 			}
@@ -158,4 +161,25 @@ func prompt(label string, secret bool) (string, error) {
 		return "", errors.New("no input")
 	}
 	return line, nil
+}
+
+// wakeMACs returns the MAC addresses syno wake needs later, when the NAS is
+// off and cannot be asked. It also tells when Wake-on-LAN is off in DSM.
+// Neither stops the login: syno wake can take --mac.
+func wakeMACs(ctx context.Context, c *dsm.Client) []string {
+	nifs, err := c.NetworkInterfaces(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not read the MAC addresses for syno wake: %v\n", err)
+		return nil
+	}
+	var macs []string
+	for _, n := range nifs {
+		if mac, err := net.ParseMAC(n.MAC); err == nil && len(mac) == 6 && !slices.Contains(macs, mac.String()) {
+			macs = append(macs, mac.String())
+		}
+	}
+	if on, err := c.WakeOnLANEnabled(ctx); err == nil && !on {
+		fmt.Fprintln(os.Stderr, "Note: Wake-on-LAN is off in DSM, so syno wake cannot start this NAS. Turn it on in Control Panel > Hardware & Power.")
+	}
+	return macs
 }
