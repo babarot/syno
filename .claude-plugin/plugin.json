@@ -1,6 +1,6 @@
 {
   "name": "syno",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Answer questions about a Synology NAS with syno: the syno skill and the syno mcp server",
   "author": {
     "name": "babarot"
