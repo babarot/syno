@@ -84,16 +84,24 @@ func (c *Client) Logout(ctx context.Context) error {
 	return err
 }
 
-// Raw calls an API and returns the "data" field undecoded.
-func (c *Client) Raw(ctx context.Context, api string, version int, method string, params url.Values) (json.RawMessage, error) {
+// Raw calls an API at path (relative to /webapi/, e.g. "entry.cgi") and
+// returns the "data" field undecoded.
+func (c *Client) Raw(ctx context.Context, path, api string, version int, method string, params url.Values) (json.RawMessage, error) {
 	var raw json.RawMessage
-	err := c.Call(ctx, api, version, method, params, &raw)
+	err := c.CallPath(ctx, path, api, version, method, params, &raw)
 	return raw, err
 }
 
-// Call invokes api.method and decodes the "data" field into out.
-// Parameters are sent as a POST form so that passwords stay out of URLs.
+// Call invokes api.method on entry.cgi, where almost every DSM 7 API lives,
+// and decodes the "data" field into out.
 func (c *Client) Call(ctx context.Context, api string, version int, method string, params url.Values, out any) error {
+	return c.CallPath(ctx, "entry.cgi", api, version, method, params, out)
+}
+
+// CallPath is Call for an API served at another path, as reported by
+// SYNO.API.Info. Parameters are sent as a POST form so that passwords stay
+// out of URLs.
+func (c *Client) CallPath(ctx context.Context, path, api string, version int, method string, params url.Values, out any) error {
 	form := url.Values{}
 	for k, v := range params {
 		form[k] = v
@@ -105,7 +113,7 @@ func (c *Client) Call(ctx context.Context, api string, version int, method strin
 		form.Set("_sid", c.sid)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/webapi/entry.cgi", strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/webapi/"+path, strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
 	}

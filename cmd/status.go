@@ -138,7 +138,7 @@ func printRaw(cmd *cobra.Command, c *dsm.Client) error {
 		{"SYNO.Core.System.Utilization", "get", 1},
 		{"SYNO.Storage.CGI.Storage", "load_info", 1},
 	} {
-		data, err := c.Raw(ctx, call.api, call.version, call.method, nil)
+		data, err := c.Raw(ctx, "entry.cgi", call.api, call.version, call.method, nil)
 		if err != nil {
 			out[call.api] = json.RawMessage(strconv.Quote(err.Error()))
 			continue
