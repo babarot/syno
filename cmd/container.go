@@ -17,9 +17,14 @@ import (
 func newContainerCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "container",
-		Short: "Inspect the containers of Container Manager",
+		Short: "Inspect, start and stop the containers of Container Manager",
 	}
-	c.AddCommand(newContainerListCmd())
+	c.AddCommand(
+		newContainerListCmd(),
+		newContainerActionCmd("start"),
+		newContainerActionCmd("stop"),
+		newContainerActionCmd("restart"),
+	)
 	return c
 }
 
