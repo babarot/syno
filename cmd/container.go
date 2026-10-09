@@ -44,16 +44,16 @@ or printed; use syno api SYNO.Docker.Container list for the raw response.`,
   syno container list --project web --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rows, err := listContainers(cmd.Context(), runningOnly, project)
+			list, err := listContainers(cmd.Context(), runningOnly, project)
 			if err != nil {
 				return err
 			}
 			if asJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(rows)
+				return enc.Encode(list)
 			}
-			return printContainers(os.Stdout, rows)
+			return printContainers(os.Stdout, list.Containers)
 		},
 	}
 
@@ -64,8 +64,15 @@ or printed; use syno api SYNO.Docker.Container list for the raw response.`,
 	return c
 }
 
+// containerList is the JSON of syno container list. The host tells which
+// NAS answered, since the profile may change between calls.
+type containerList struct {
+	Host       string         `json:"host"`
+	Containers []containerRow `json:"containers"`
+}
+
 // listContainers lists the containers as syno container list shows them.
-func listContainers(ctx context.Context, runningOnly bool, project string) ([]containerRow, error) {
+func listContainers(ctx context.Context, runningOnly bool, project string) (*containerList, error) {
 	client, release, err := connect(ctx)
 	if err != nil {
 		return nil, err
@@ -79,7 +86,7 @@ func listContainers(ctx context.Context, runningOnly bool, project string) ([]co
 	if err != nil {
 		return nil, err
 	}
-	return containerRows(cs, runningOnly, project), nil
+	return &containerList{Host: client.Base, Containers: containerRows(cs, runningOnly, project)}, nil
 }
 
 // containerRow is what syno shows of a container, in the table and in JSON.

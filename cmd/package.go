@@ -44,16 +44,16 @@ updated.`,
   syno package list --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rows, err := listPackages(cmd.Context(), outdated)
+			list, err := listPackages(cmd.Context(), outdated)
 			if err != nil {
 				return err
 			}
 			if asJSON {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(rows)
+				return enc.Encode(list)
 			}
-			return printPackages(os.Stdout, rows)
+			return printPackages(os.Stdout, list.Packages)
 		},
 	}
 
@@ -63,8 +63,15 @@ updated.`,
 	return c
 }
 
+// packageList is the JSON of syno package list. The host tells which NAS
+// answered, since the profile may change between calls.
+type packageList struct {
+	Host     string       `json:"host"`
+	Packages []packageRow `json:"packages"`
+}
+
 // listPackages lists the packages as syno package list shows them.
-func listPackages(ctx context.Context, outdated bool) ([]packageRow, error) {
+func listPackages(ctx context.Context, outdated bool) (*packageList, error) {
 	client, release, err := connect(ctx)
 	if err != nil {
 		return nil, err
@@ -81,7 +88,7 @@ func listPackages(ctx context.Context, outdated bool) ([]packageRow, error) {
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	return packageRows(dsm.PackageUpdates(installed, store), outdated), nil
+	return &packageList{Host: client.Base, Packages: packageRows(dsm.PackageUpdates(installed, store), outdated)}, nil
 }
 
 // packageRow is what syno shows of a package, in the table and in JSON.

@@ -201,7 +201,7 @@ For APIs that take JSON parameters, `-f` values that are not valid JSON are sent
 
 ### mcp
 
-Runs an MCP server over stdio, so that an AI assistant such as Claude Code can answer questions like "how much space is left?" or "is any container down?". The tools only read, and give the same JSON as the `--json` output of the commands:
+Runs an MCP server over stdio, so that an AI assistant such as Claude Code can answer questions like "how much space is left?" or "is any container down?". The tools only read, and give the same JSON as the commands:
 
 | Tool | Same as |
 |------|---------|
@@ -209,12 +209,17 @@ Runs an MCP server over stdio, so that an AI assistant such as Claude Code can a
 | `syno_doctor` | `syno doctor --json`, with `skip` and `only` |
 | `syno_containers` | `syno container list --json`, with `running` and `project` |
 | `syno_packages` | `syno package list --json`, with `outdated` |
+| `syno_api_list` | `syno api --list --json`, with `filter`, under `apis` next to `host` |
+| `syno_api` | `syno api`, under `data` next to `host`; only with `--allow-api` |
 
-`syno api` is not offered as a tool, since it can call methods that change the NAS. The server uses the profile chosen when it starts, so register one server per NAS:
+`syno_api` lets the assistant answer what the other tools do not cover, such as shared folders or backups, and is off unless the server is started with `--allow-api`. Even DSM methods that only read can return secrets, such as the environment variables of containers or the passwords in notification, DDNS and backup settings, and what a tool returns is sent to the provider of the AI. Turn it on only if you accept that. `syno_api` then calls only the methods whose name says they read (`list`, `get`, `info`, `load_info`, `query`, `status`, and ones starting with `get_`, `list_` or `load_`), which lowers the chance of changing the NAS without ruling it out.
+
+Each tool call uses the profile given by `--profile` or `SYNO_PROFILE`, or else the current profile at the time of the call, and every answer has the `host` it came from. The server starts without a profile too; its tools then answer that `syno login` is needed, and work once you have logged in. Register one server per NAS:
 
 ```bash
 claude mcp add syno -- syno mcp
 claude mcp add syno-office -- syno mcp --profile office
+claude mcp add syno -- syno mcp --allow-api   # also offer syno_api
 ```
 
 ## Configuration

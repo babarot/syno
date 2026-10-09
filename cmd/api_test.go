@@ -47,3 +47,32 @@ func TestJSONEncodeValues(t *testing.T) {
 		t.Errorf("got %v, want %v", params, want)
 	}
 }
+
+func TestIsReadMethod(t *testing.T) {
+	tests := map[string]bool{
+		"list":           true,
+		"get":            true,
+		"info":           true,
+		"load_info":      true,
+		"query":          true,
+		"status":         true,
+		"get_config":     true,
+		"list_share":     true,
+		"load_all":       true,
+		"set":            false,
+		"delete":         false,
+		"shutdown":       false,
+		"reboot":         false,
+		"export":         false,
+		"get_":           false,
+		"getall":         false,
+		"List":           false,
+		"set_get_config": false,
+		"":               false,
+	}
+	for method, want := range tests {
+		if got := isReadMethod(method); got != want {
+			t.Errorf("isReadMethod(%q) = %v, want %v", method, got, want)
+		}
+	}
+}
