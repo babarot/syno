@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
 	"github.com/babarot/syno/internal/config"
+	"github.com/babarot/syno/internal/dsm"
 	"github.com/babarot/syno/internal/version"
 )
 
@@ -43,7 +45,9 @@ Register one server per NAS:
 			if err := checkMCPStart(); err != nil {
 				return err
 			}
-			return newMCPServer(nasBackend{}, allowAPI).Run(cmd.Context(), &mcp.StdioTransport{})
+			b := newNASBackend()
+			defer b.close()
+			return newMCPServer(b, allowAPI).Run(cmd.Context(), &mcp.StdioTransport{})
 		},
 	}
 
@@ -71,38 +75,97 @@ type backend interface {
 	API(ctx context.Context, api, method string, version int, params url.Values) (any, error)
 }
 
-type nasBackend struct{}
+// nasBackend asks the NAS of the profile selected at each call, keeping one
+// session per profile open while the server runs.
+type nasBackend struct {
+	mu       sync.Mutex
+	sessions map[string]*liveSession
+}
 
-func (nasBackend) Status(ctx context.Context) (any, error) {
-	s, err := loadStatus(ctx)
+func newNASBackend() *nasBackend {
+	return &nasBackend{sessions: map[string]*liveSession{}}
+}
+
+// do runs fn with the session of the profile selected now: the user can
+// switch it between calls with syno profile use.
+func (b *nasBackend) do(ctx context.Context, fn func(*dsm.Client) error) error {
+	_, p, err := selectProfile()
+	if err != nil {
+		return err
+	}
+	// A profile saved again by syno login may point elsewhere.
+	key := p.URL + "\x00" + p.User + "\x00" + p.TLS.Pin
+	b.mu.Lock()
+	s, ok := b.sessions[key]
+	if !ok {
+		s = newLiveSession(p, keyringStore{})
+		b.sessions[key] = s
+	}
+	b.mu.Unlock()
+	return s.do(ctx, fn)
+}
+
+// close ends the sessions that could not be saved.
+func (b *nasBackend) close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, s := range b.sessions {
+		s.close()
+	}
+}
+
+func (b *nasBackend) Status(ctx context.Context) (any, error) {
+	var out any
+	err := b.do(ctx, func(c *dsm.Client) error {
+		s, err := readStatus(ctx, c)
+		if err != nil {
+			return err
+		}
+		out = s.report()
+		return nil
+	})
+	return out, err
+}
+
+func (b *nasBackend) Doctor(ctx context.Context, skip, only []string) (any, error) {
+	opts, err := doctorOptions(skip, only)
 	if err != nil {
 		return nil, err
 	}
-	return s.report(), nil
+	var out any
+	err = b.do(ctx, func(c *dsm.Client) error {
+		out = readDoctor(ctx, c, opts)
+		return nil
+	})
+	return out, err
 }
 
-func (nasBackend) Doctor(ctx context.Context, skip, only []string) (any, error) {
-	return runDoctor(ctx, skip, only)
+func (b *nasBackend) Containers(ctx context.Context, opts containerListOptions) (any, error) {
+	var out any
+	err := b.do(ctx, func(c *dsm.Client) (err error) { out, err = readContainers(ctx, c, opts); return })
+	return out, err
 }
 
-func (nasBackend) Containers(ctx context.Context, opts containerListOptions) (any, error) {
-	return listContainers(ctx, opts)
+func (b *nasBackend) Packages(ctx context.Context, outdated bool) (any, error) {
+	var out any
+	err := b.do(ctx, func(c *dsm.Client) (err error) { out, err = readPackages(ctx, c, outdated); return })
+	return out, err
 }
 
-func (nasBackend) Packages(ctx context.Context, outdated bool) (any, error) {
-	return listPackages(ctx, outdated)
+func (b *nasBackend) Shares(ctx context.Context, recycle bool) (any, error) {
+	var out any
+	err := b.do(ctx, func(c *dsm.Client) (err error) { out, err = readShares(ctx, c, recycle); return })
+	return out, err
 }
 
-func (nasBackend) Shares(ctx context.Context, recycle bool) (any, error) {
-	return listShares(ctx, recycle)
-}
-
-func (nasBackend) APIList(ctx context.Context, filter string) (any, error) {
+func (*nasBackend) APIList(ctx context.Context, filter string) (any, error) {
 	return listAPIs(ctx, "", filter)
 }
 
-func (nasBackend) API(ctx context.Context, api, method string, version int, params url.Values) (any, error) {
-	return callAPI(ctx, api, method, version, params)
+func (b *nasBackend) API(ctx context.Context, api, method string, version int, params url.Values) (any, error) {
+	var out any
+	err := b.do(ctx, func(c *dsm.Client) (err error) { out, err = callAPIWith(ctx, c, api, method, version, params); return })
+	return out, err
 }
 
 type (

@@ -77,7 +77,11 @@ func listPackages(ctx context.Context, outdated bool) (*packageList, error) {
 		return nil, err
 	}
 	defer release()
+	return readPackages(ctx, client, outdated)
+}
 
+// readPackages is listPackages with a client that is already logged in.
+func readPackages(ctx context.Context, client *dsm.Client, outdated bool) (*packageList, error) {
 	var (
 		installed []dsm.Package
 		store     []dsm.StorePackage

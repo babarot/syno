@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sync"
+	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/babarot/syno/internal/config"
 	"github.com/babarot/syno/internal/credential"
@@ -89,12 +93,101 @@ func connect(ctx context.Context) (*dsm.Client, func(), error) {
 	c := dsm.New(p.URL, p.TLS.Pin)
 	release, err := openSession(ctx, c, keyringStore{}, p.URL, p.User)
 	if err != nil {
-		if _, ok := errors.AsType[*tls.CertificateVerificationError](err); ok {
-			err = fmt.Errorf("%w; run `syno login` to check the certificate and pin it", err)
-		}
-		return nil, nil, err
+		return nil, nil, explainConnectError(err)
 	}
 	return c, release, nil
+}
+
+// explainConnectError tells how to fix a certificate DSM no longer matches.
+func explainConnectError(err error) error {
+	if _, ok := errors.AsType[*tls.CertificateVerificationError](err); ok {
+		return fmt.Errorf("%w; run `syno login` to check the certificate and pin it", err)
+	}
+	return err
+}
+
+// loginTimeout bounds logging in again for a long-running command, which
+// does not end with the request that noticed the session was gone.
+const loginTimeout = 30 * time.Second
+
+// liveSession keeps one client logged in to a profile for a long-running
+// command, such as syno mcp, instead of opening a session for every
+// request. It logs in again when DSM drops the session.
+type liveSession struct {
+	url, user string
+	client    *dsm.Client
+	store     secretStore
+	login     singleflight.Group
+
+	mu      sync.Mutex
+	opened  bool
+	release func()
+}
+
+func newLiveSession(p *config.Profile, store secretStore) *liveSession {
+	return &liveSession{url: p.URL, user: p.User, client: dsm.New(p.URL, p.TLS.Pin), store: store}
+}
+
+// do runs fn with the client, opening the session on first use. When DSM
+// says during fn that the session is gone (106, 107, 119), it logs in
+// again, once for all the callers that noticed it together, and runs fn
+// once more. fn may have to run twice, so it must only read.
+func (s *liveSession) do(ctx context.Context, fn func(*dsm.Client) error) error {
+	if !s.isOpen() {
+		if err := s.open(ctx, ""); err != nil {
+			return err
+		}
+	}
+	sid, lost := s.client.SID(), s.client.SessionLosses()
+	err := fn(s.client)
+	if !dsm.IsSessionGone(err) && s.client.SessionLosses() == lost {
+		return err
+	}
+	if err := s.open(ctx, sid); err != nil {
+		return err
+	}
+	return fn(s.client)
+}
+
+func (s *liveSession) isOpen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.opened
+}
+
+// open opens the session, or replaces stale, the session a caller found
+// gone. Callers that arrive together share one login, and a caller whose
+// stale session was already replaced does not log in again.
+func (s *liveSession) open(ctx context.Context, stale string) error {
+	_, err, _ := s.login.Do("open", func() (any, error) {
+		if s.isOpen() && s.client.SID() != stale {
+			return nil, nil
+		}
+		// The login outlives the request that asked for it, since the
+		// callers waiting for it may have more time.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), loginTimeout)
+		defer cancel()
+		release, err := openSession(ctx, s.client, s.store, s.url, s.user)
+		if err != nil {
+			return nil, explainConnectError(err)
+		}
+		s.mu.Lock()
+		s.opened, s.release = true, release
+		s.mu.Unlock()
+		return nil, nil
+	})
+	return err
+}
+
+// close logs out a session that could not be saved, as connect's release
+// does when a command ends.
+func (s *liveSession) close() {
+	s.mu.Lock()
+	release := s.release
+	s.mu.Unlock()
+	if release != nil {
+		release()
+	}
 }
 
 // sessionClient is the part of dsm.Client that openSession uses.
@@ -175,7 +268,9 @@ func openSession(ctx context.Context, c sessionClient, store secretStore, host, 
 // without a keyring, is logged out then rather than left on the NAS.
 func saveSession(ctx context.Context, c sessionClient, store secretStore, host, user string) (release func()) {
 	if err := store.SetSession(host, user, c.SID()); err != nil {
-		return func() { _ = c.Logout(ctx) }
+		// The command's context may be canceled by then, by Ctrl-C or by
+		// the end of the login of a long-running command.
+		return func() { _ = c.Logout(context.WithoutCancel(ctx)) }
 	}
 	return func() {}
 }
