@@ -213,6 +213,18 @@ homes    /volume1   120.0 GB   -
 syno share list --json
 ```
 
+### wake
+
+Starts the NAS with a Wake-on-LAN magic packet, broadcast on the local network. No login is needed. `syno login` saves the MAC addresses of the NAS in the profile for this, since they cannot be asked for while the NAS is off; for a profile saved before, the ARP table of this machine or `--mac` is used.
+
+```bash
+syno wake
+syno wake --wait                    # wait until DSM answers (up to --timeout, 5m)
+syno wake --mac 00:11:32:12:34:56
+```
+
+Wake-on-LAN has to be on in DSM (Control Panel > Hardware & Power); `syno login` says so when it is off. The packet does not cross routers or VPNs, so run `syno wake` on the same network as the NAS.
+
 ### api
 
 Calls any DSM Web API with the saved account and prints the `data` field of the response as JSON. DSM has hundreds of APIs and few are documented, so this is the way to look around. The path and the latest version of each API come from `SYNO.API.Info`.

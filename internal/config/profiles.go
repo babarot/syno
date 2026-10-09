@@ -27,6 +27,10 @@ type Profile struct {
 	URL  string `yaml:"url"`
 	User string `yaml:"user"`
 	TLS  TLS    `yaml:"tls,omitempty"`
+	// MACs are the MAC addresses of the NAS's network interfaces, saved by
+	// syno login for syno wake, since they cannot be asked for while the
+	// NAS is off.
+	MACs []string `yaml:"macs,omitempty"`
 }
 
 // TLS holds how the server certificate is trusted.

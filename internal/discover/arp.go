@@ -80,3 +80,14 @@ func normalizeMAC(s string) string {
 	}
 	return hw.String()
 }
+
+// LookupMAC returns the MAC address the system ARP table has for ip, or ""
+// when it has none. Entries expire, so this finds a host that stopped only
+// a short while ago.
+func LookupMAC(ip netip.Addr) (string, error) {
+	table, err := readARP()
+	if err != nil {
+		return "", err
+	}
+	return table[ip.Unmap()], nil
+}
