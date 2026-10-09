@@ -28,6 +28,7 @@ func NewRootCmd() *cobra.Command {
 		newMCPCmd(),
 		newContainerCmd(),
 		newPackageCmd(),
+		newShareCmd(),
 	)
 
 	return root

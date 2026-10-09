@@ -187,6 +187,23 @@ syno package list --outdated
 syno package list --json
 ```
 
+### share
+
+Lists the shared folders by the space they use, the largest first, to see what fills a volume. FLAGS shows `hidden`, `encrypted`, `read-only`, `usb` and `recycle-bin` where they apply.
+
+```console
+$ syno share list
+NAME     VOLUME     USED       FLAGS
+media    /volume1   8.4 TB     recycle-bin
+homes    /volume1   120.0 GB
+photo    /volume1   96.5 GB
+docker   /volume1   0 B        hidden
+```
+
+```bash
+syno share list --json
+```
+
 ### api
 
 Calls any DSM Web API with the saved account and prints the `data` field of the response as JSON. DSM has hundreds of APIs and few are documented, so this is the way to look around. The path and the latest version of each API come from `SYNO.API.Info`.
@@ -209,10 +226,11 @@ Runs an MCP server over stdio, so that an AI assistant such as Claude Code can a
 | `syno_doctor` | `syno doctor --json`, with `skip` and `only` |
 | `syno_containers` | `syno container list --json`, with `running` and `project` |
 | `syno_packages` | `syno package list --json`, with `outdated` |
+| `syno_shares` | `syno share list --json` |
 | `syno_api_list` | `syno api --list --json`, with `filter`, under `apis` next to `host` |
 | `syno_api` | `syno api`, under `data` next to `host`; only with `--allow-api` |
 
-`syno_api` lets the assistant answer what the other tools do not cover, such as shared folders or backups, and is off unless the server is started with `--allow-api`. Even DSM methods that only read can return secrets, such as the environment variables of containers or the passwords in notification, DDNS and backup settings, and what a tool returns is sent to the provider of the AI. Turn it on only if you accept that. `syno_api` then calls only the methods whose name says they read (`list`, `get`, `info`, `load_info`, `query`, `status`, and ones starting with `get_`, `list_` or `load_`), which lowers the chance of changing the NAS without ruling it out.
+`syno_api` lets the assistant answer what the other tools do not cover, such as users or backups, and is off unless the server is started with `--allow-api`. Even DSM methods that only read can return secrets, such as the environment variables of containers or the passwords in notification, DDNS and backup settings, and what a tool returns is sent to the provider of the AI. Turn it on only if you accept that. `syno_api` then calls only the methods whose name says they read (`list`, `get`, `info`, `load_info`, `query`, `status`, and ones starting with `get_`, `list_` or `load_`), which lowers the chance of changing the NAS without ruling it out.
 
 Each tool call uses the profile given by `--profile` or `SYNO_PROFILE`, or else the current profile at the time of the call, and every answer has the `host` it came from. The server starts without a profile too; its tools then answer that `syno login` is needed, and work once you have logged in. Register one server per NAS:
 

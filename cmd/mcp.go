@@ -66,6 +66,7 @@ type backend interface {
 	Doctor(ctx context.Context, skip, only []string) (any, error)
 	Containers(ctx context.Context, runningOnly bool, project string) (any, error)
 	Packages(ctx context.Context, outdated bool) (any, error)
+	Shares(ctx context.Context) (any, error)
 	APIList(ctx context.Context, filter string) (any, error)
 	API(ctx context.Context, api, method string, version int, params url.Values) (any, error)
 }
@@ -90,6 +91,10 @@ func (nasBackend) Containers(ctx context.Context, runningOnly bool, project stri
 
 func (nasBackend) Packages(ctx context.Context, outdated bool) (any, error) {
 	return listPackages(ctx, outdated)
+}
+
+func (nasBackend) Shares(ctx context.Context) (any, error) {
+	return listShares(ctx)
 }
 
 func (nasBackend) APIList(ctx context.Context, filter string) (any, error) {
@@ -132,7 +137,7 @@ func mcpInstructions(allowAPI bool) string {
 		other = "For anything else, find an API with syno_api_list and call it with syno_api. DSM does not list methods, so try list, get or info, and another when DSM answers that the method does not exist (code 103). Ask only for what the question needs: the answers can hold secrets."
 	}
 	return `These tools read a Synology NAS and never change it.
-Start with syno_doctor for whether the NAS is healthy, syno_status for space, disks and load, syno_containers and syno_packages for those. ` + other + `
+Start with syno_doctor for whether the NAS is healthy, syno_status for space, disks and load, syno_shares for which shared folders use the space, syno_containers and syno_packages for those. ` + other + `
 Each call uses the current profile unless the server was started with one, and the user can switch it between calls: the host in each answer tells which NAS answered.
 When a tool answers that syno login is needed or that a certificate is not trusted, do not work around it: ask the user to run the command it names in a terminal, since it asks for a password and confirmations.`
 }
@@ -179,8 +184,17 @@ func newMCPServer(b backend, allowAPI bool) *mcp.Server {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "syno_shares",
+		Description: "List the shared folders of the Synology NAS with the space each uses in bytes, the largest first, and whether it is hidden, encrypted, read-only, on USB or has a recycle bin. Use this to find what fills a volume.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, any, error) {
+		out, err := b.Shares(ctx)
+		return nil, out, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "syno_api_list",
-		Description: "List the DSM Web APIs the Synology NAS provides, with their path, versions and request format. Use this to find an API for a question the other tools do not answer, such as shared folders, users, backups or logs, and call it with syno_api when the server offers it.",
+		Description: "List the DSM Web APIs the Synology NAS provides, with their path, versions and request format. Use this to find an API for a question the other tools do not answer, such as users, backups or logs, and call it with syno_api when the server offers it.",
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in apiListInput) (*mcp.CallToolResult, any, error) {
 		out, err := b.APIList(ctx, in.Filter)
