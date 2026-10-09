@@ -1,6 +1,6 @@
 ---
 name: syno
-description: "Answer questions about a Synology NAS (DSM) with the syno CLI or its MCP tools (syno_*): whether it is healthy, free space, disks and temperatures, load, containers, package and DSM updates, and other DSM state such as shared folders, users, backups and logs. Use when the user asks about their Synology, NAS or DSM."
+description: "Answer questions about a Synology NAS (DSM) with the syno CLI or its MCP tools (syno_*): whether it is healthy, free space and the shared folders that use it, disks and temperatures, load, containers, package and DSM updates, and other DSM state such as users, backups and logs. Use when the user asks about their Synology, NAS or DSM."
 license: MIT
 ---
 
@@ -23,6 +23,7 @@ Each tool call and command uses the profile given by `--profile` or `SYNO_PROFIL
 - Space, pools, volumes, disks, temperature, CPU, memory, DSM version: `syno status` (`syno_status`).
 - Containers of Container Manager: `syno container list` (`syno_containers`).
 - Package updates: `syno package list` (`syno_packages`).
+- Shared folders and the space each uses: `syno share list` (`syno_shares`).
 
 Start broad and narrow down: a warning in doctor tells you which part to look at in status. In the answer, give the numbers and where they come from (the doctor check, or the field of status), and say which `host` answered when there is more than one NAS.
 

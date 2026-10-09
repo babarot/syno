@@ -6,7 +6,7 @@ Ask the user before calling any of them (see SKILL.md), and pick only the fields
 
 | Question | API | Method | Notes |
 |----------|-----|--------|-------|
-| Shared folders and their size | `SYNO.Core.Share` | `list` | Add `additional=["share_quota","encryption","hidden","recyclebin"]` for usage, quotas and flags. `share_quota_used` is in MiB. |
+| Quotas of shared folders | `SYNO.Core.Share` | `list` | Use `syno share list` for usage and flags. Add `additional=["share_quota"]` for `quota_value`, whose unit is not confirmed. |
 | Snapshots of a shared folder | `SYNO.Core.Share.Snapshot` | `list` | Needs `name=<share>`. |
 | Users | `SYNO.Core.User` | `list` | |
 | Groups | `SYNO.Core.Group` | `list` | |

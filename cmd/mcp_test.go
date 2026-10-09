@@ -43,6 +43,11 @@ func (f *fakeBackend) Packages(_ context.Context, outdated bool) (any, error) {
 	return &packageList{Host: testHost, Packages: []packageRow{{ID: "web", Version: "1.2.0-0100", Latest: "1.3.0-0110", InStore: true}}}, f.err
 }
 
+func (f *fakeBackend) Shares(context.Context) (any, error) {
+	f.args = nil
+	return &shareList{Host: testHost, Shares: []shareRow{{Name: "media", Volume: "/volume1", UsedBytes: 1 << 40, RecycleBin: true}}}, f.err
+}
+
 func (f *fakeBackend) APIList(_ context.Context, filter string) (any, error) {
 	f.args = []any{filter}
 	return &apiList{Host: testHost, APIs: map[string]dsm.APIInfo{"SYNO.Core.Share": {Path: "entry.cgi", MinVersion: 1, MaxVersion: 1, RequestFormat: "JSON"}}}, f.err
@@ -85,7 +90,7 @@ func callTool(t *testing.T, cs *mcp.ClientSession, name string, args map[string]
 }
 
 func TestMCPTools(t *testing.T) {
-	base := []string{"syno_api_list", "syno_containers", "syno_doctor", "syno_packages", "syno_status"}
+	base := []string{"syno_api_list", "syno_containers", "syno_doctor", "syno_packages", "syno_shares", "syno_status"}
 	for _, allowAPI := range []bool{false, true} {
 		cs := connectMCP(t, &fakeBackend{}, allowAPI)
 		r, err := cs.ListTools(context.Background(), nil)
@@ -132,6 +137,8 @@ func TestMCPCalls(t *testing.T) {
 		{"syno_packages", map[string]any{"outdated": true}, []any{true},
 			`{"host":"` + testHost + `","packages":[{"id":"web","name":"","version":"1.2.0-0100","latest":"1.3.0-0110","security":false,"in_store":true,"status":""}]}`},
 		{"syno_packages", nil, []any{false}, ""},
+		{"syno_shares", nil, nil,
+			`{"host":"` + testHost + `","shares":[{"name":"media","volume":"/volume1","used_bytes":1099511627776,"hidden":false,"encrypted":false,"read_only":false,"usb":false,"recycle_bin":true}]}`},
 		{"syno_api_list", map[string]any{"filter": "share"}, []any{"share"}, `{"host":"` + testHost + `","apis":{"SYNO.Core.Share":{"path":"entry.cgi","minVersion":1,"maxVersion":1,"requestFormat":"JSON"}}}`},
 		{"syno_api", map[string]any{"api": "SYNO.Core.Share", "method": "list", "params": map[string]any{"additional": `["share_quota"]`}},
 			[]any{"SYNO.Core.Share", "list", 0, url.Values{"additional": {`["share_quota"]`}}}, `{"host":"` + testHost + `","data":{"shares":[]}}`},
