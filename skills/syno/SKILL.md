@@ -20,7 +20,7 @@ Each tool call and command uses the profile given by `--profile` or `SYNO_PROFIL
 ## Answer from the commands first
 
 - Is the NAS healthy, is anything wrong: `syno doctor` (`syno_doctor`). `syno doctor --list` tells what each check looks at.
-- Space, pools, volumes, disks, temperature, CPU, memory, DSM version: `syno status` (`syno_status`).
+- Space, pools, volumes, disks, temperature, CPU, memory, DSM version: `syno status` (`syno_status`). Disks show their power-on hours, and the life left when DSM estimates it (mostly SSDs; `-` or no `life_percent` means no estimate, not 0%).
 - Containers of Container Manager: `syno container list` (`syno_containers`). Add `--usage` (`usage`) for the CPU and memory each running one uses.
 - Package updates: `syno package list` (`syno_packages`).
 - Shared folders and the space each uses: `syno share list` (`syno_shares`). Add `--recycle` (`recycle`) for what emptying the recycle bins would free.

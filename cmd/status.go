@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -53,7 +54,7 @@ func newStatusCmd() *cobra.Command {
 			fmt.Fprintln(w)
 			printVolumes(w, s.st)
 			fmt.Fprintln(w)
-			printDisks(w, s.st)
+			printDisks(w, s.st, s.powerOn)
 			return w.Flush()
 		},
 	}
@@ -71,6 +72,9 @@ type status struct {
 	sys  *dsm.SystemInfo
 	util *dsm.Utilization
 	st   *dsm.Storage
+	// powerOn is the power-on hours of each disk by Disk.ID, for the disks
+	// whose SMART overview could be read.
+	powerOn map[string]float64
 }
 
 func loadStatus(ctx context.Context) (*status, error) {
@@ -84,11 +88,50 @@ func loadStatus(ctx context.Context) (*status, error) {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() (err error) { s.sys, err = client.SystemInfo(gctx); return })
 	g.Go(func() (err error) { s.util, err = client.Utilization(gctx); return })
-	g.Go(func() (err error) { s.st, err = client.Storage(gctx); return })
+	g.Go(func() (err error) {
+		if s.st, err = client.Storage(gctx); err != nil {
+			return err
+		}
+		// One call per disk, in the time Utilization takes anyway.
+		s.powerOn = powerOnHours(gctx, client, s.st.Disks)
+		return nil
+	})
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// diskHealthSource is the part of dsm.Client that powerOnHours uses.
+type diskHealthSource interface {
+	DiskHealth(ctx context.Context, device string) (*dsm.DiskHealth, error)
+}
+
+// powerOnHours reads the power-on hours of the disks in parallel. A disk
+// whose SMART overview cannot be read is left out rather than failing the
+// whole status, since the hours are a detail.
+func powerOnHours(ctx context.Context, c diskHealthSource, disks []dsm.Disk) map[string]float64 {
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		out = map[string]float64{}
+	)
+	for _, d := range disks {
+		if d.Device == "" {
+			continue
+		}
+		wg.Go(func() {
+			h, err := c.DiskHealth(ctx, d.Device)
+			if err != nil || h.PowerOnHours <= 0 {
+				return
+			}
+			mu.Lock()
+			out[d.ID] = float64(h.PowerOnHours)
+			mu.Unlock()
+		})
+	}
+	wg.Wait()
+	return out
 }
 
 // statusReport is the JSON of syno status --json and the syno_status MCP
@@ -134,7 +177,10 @@ type diskReport struct {
 	Status       string  `json:"status"`
 	SMART        string  `json:"smart"`
 	TemperatureC float64 `json:"temperature_c"`
-	Pool         string  `json:"pool"`
+	// LifePercent is the life left that DSM estimates, mostly for SSDs.
+	LifePercent  *float64 `json:"life_percent,omitempty"`
+	PowerOnHours *float64 `json:"power_on_hours,omitempty"`
+	Pool         string   `json:"pool"`
 }
 
 func (s *status) report() statusReport {
@@ -166,10 +212,17 @@ func (s *status) report() statusReport {
 		})
 	}
 	for _, d := range s.st.Disks {
-		r.Disks = append(r.Disks, diskReport{
+		dr := diskReport{
 			Name: d.Name, Model: strings.Join(strings.Fields(d.Vendor+" "+d.Model), " "), SizeBytes: float64(d.SizeTotal),
 			Status: d.Status, SMART: d.SmartStatus, TemperatureC: float64(d.Temp), Pool: poolName(s.st, d.UsedBy),
-		})
+		}
+		if v, ok := d.LifePercent(); ok {
+			dr.LifePercent = &v
+		}
+		if h, ok := s.powerOn[d.ID]; ok {
+			dr.PowerOnHours = &h
+		}
+		r.Disks = append(r.Disks, dr)
 	}
 	return r
 }
@@ -211,13 +264,34 @@ func printVolumes(w io.Writer, st *dsm.Storage) {
 	}
 }
 
-func printDisks(w io.Writer, st *dsm.Storage) {
-	fmt.Fprintln(w, "DISK\tMODEL\tSIZE\tSTATUS\tSMART\tTEMP\tPOOL")
+func printDisks(w io.Writer, st *dsm.Storage, powerOn map[string]float64) {
+	fmt.Fprintln(w, "DISK\tMODEL\tSIZE\tSTATUS\tSMART\tTEMP\tLIFE\tPOWER-ON\tPOOL")
 	for _, d := range st.Disks {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%.0f°C\t%s\n",
+		life := "-"
+		if v, ok := d.LifePercent(); ok {
+			life = fmt.Sprintf("%.0f%%", v)
+		}
+		hours := "-"
+		if h, ok := powerOn[d.ID]; ok {
+			hours = formatHours(h)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%.0f°C\t%s\t%s\t%s\n",
 			d.Name, strings.Join(strings.Fields(d.Vendor+" "+d.Model), " "),
 			humanBytes(float64(d.SizeTotal)), d.Status, d.SmartStatus,
-			float64(d.Temp), poolName(st, d.UsedBy))
+			float64(d.Temp), life, hours, poolName(st, d.UsedBy))
+	}
+}
+
+// formatHours shortens power-on hours to the largest unit that fits:
+// "18h", "40d", "2.6y".
+func formatHours(h float64) string {
+	switch {
+	case h < 48:
+		return fmt.Sprintf("%.0fh", h)
+	case h < 365*24:
+		return fmt.Sprintf("%.0fd", h/24)
+	default:
+		return fmt.Sprintf("%.1fy", h/(365*24))
 	}
 }
 

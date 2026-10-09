@@ -152,7 +152,7 @@ func newMCPServer(b backend, allowAPI bool) *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "syno_status",
-		Description: "Show the Synology NAS: model, DSM version, uptime, temperature, CPU and memory usage, and each storage pool, volume and disk with its status and usage in bytes. Use this for questions about free space, disks or load.",
+		Description: "Show the Synology NAS: model, DSM version, uptime, temperature, CPU and memory usage, and each storage pool, volume and disk with its status and usage in bytes; disks also have power-on hours, and the life left in percent when DSM estimates it (mostly SSDs). Use this for questions about free space, disks or load.",
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, any, error) {
 		out, err := b.Status(ctx)
