@@ -8,6 +8,7 @@ on:
     paths-ignore:
       - CHANGELOG.md
       - internal/version/version.go
+      - .claude-plugin/plugin.json
   workflow_call:
 
 jobs:

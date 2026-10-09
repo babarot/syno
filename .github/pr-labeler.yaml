@@ -8,4 +8,5 @@ changelog/skip:
         - '!go.mod'
         - '!go.sum'
         - '!skills/**'
+        - '!.claude-plugin/**'
         - '!CHANGELOG.md'
