@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -353,5 +354,40 @@ func TestMissingAPIIsUnknown(t *testing.T) {
 		if r.Level != Unknown {
 			t.Errorf("%s: got %s, want unknown", r.Check, r.Level)
 		}
+	}
+}
+
+func TestOnly(t *testing.T) {
+	src := &fakeSource{sys: &dsm.SystemInfo{}, st: healthyStorage()}
+	results := Run(context.Background(), src, Options{Thresholds: DefaultThresholds(), Now: now, Only: []string{"disks", "volumes"}})
+	var names []string
+	for _, r := range results {
+		names = append(names, r.Check)
+	}
+	// Report order follows Checks, not the order given.
+	if len(names) != 2 || names[0] != "volumes" || names[1] != "disks" {
+		t.Errorf("checks run = %v, want [volumes disks]", names)
+	}
+}
+
+func TestValidateNames(t *testing.T) {
+	if err := ValidateNames(CheckNames()); err != nil {
+		t.Errorf("every check name: %v", err)
+	}
+	if err := ValidateNames([]string{"volumes", "nope"}); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Errorf("unknown name: %v", err)
+	}
+}
+
+func TestThresholdsValidate(t *testing.T) {
+	if err := DefaultThresholds().Validate(); err != nil {
+		t.Errorf("defaults: %v", err)
+	}
+	th := DefaultThresholds()
+	th.DiskTempWarn, th.DiskTempFail = 60, 50
+	th.VolumeUsageFail = 120
+	err := th.Validate()
+	if err == nil || !strings.Contains(err.Error(), "disk_temperature") || !strings.Contains(err.Error(), "volume_usage") {
+		t.Errorf("err = %v, want both problems", err)
 	}
 }

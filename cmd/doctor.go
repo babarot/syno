@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -12,26 +13,59 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/babarot/syno/internal/config"
 	"github.com/babarot/syno/internal/doctor"
 )
 
 func newDoctorCmd() *cobra.Command {
-	var asJSON bool
+	var (
+		asJSON bool
+		list   bool
+		skip   []string
+		only   []string
+	)
 
 	c := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check the health of the NAS",
-		Long: `Check the health of the NAS: storage pools, volumes, disks, data scrubbing
-and temperatures.
+		Long: `Check the health of the NAS: storage pools, volumes, disks, data scrubbing,
+temperatures, updates, the Security Advisor and certificates. --list shows
+every check.
+
+Checks can be turned off with --skip or in ~/.config/syno/config.yaml, and
+the thresholds can be changed there too:
+
+  doctor:
+    skip: [dsm-update]
+    thresholds:
+      volume_usage: {warn: 85, fail: 95}       # percent
+      disk_temperature: {warn: 50, fail: 60}   # Celsius
+      scrub_age_days: 90
+      security_scan_age_days: 30
+      cert_expiry_days: 30
+      renewable_cert_expiry_days: 14
 
 The exit status follows the Nagios plugin convention, so the command can be
 used from cron or a monitoring system:
 
-  0  every check is OK
+  0  every check is OK or skipped
   1  at least one check warns
   2  at least one check fails
-  3  a check could not run, or the NAS could not be reached`,
+  3  a check could not run, the NAS could not be reached, or the settings
+     are invalid`,
+		Example: `  syno doctor
+  syno doctor --skip dsm-update,certificates
+  syno doctor --only volumes,disks --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if list {
+				return printChecks(os.Stdout)
+			}
+
+			opts, err := doctorOptions(skip, only)
+			if err != nil {
+				return &ExitError{Code: 3, Err: err}
+			}
+
 			ctx := cmd.Context()
 			client, err := connect(ctx)
 			if err != nil {
@@ -39,7 +73,7 @@ used from cron or a monitoring system:
 			}
 			defer client.Logout(ctx)
 
-			results := doctor.Run(ctx, client, doctor.Options{Thresholds: doctor.DefaultThresholds(), Now: time.Now()})
+			results := doctor.Run(ctx, client, opts)
 			code := doctor.ExitCode(results)
 
 			if asJSON {
@@ -64,8 +98,74 @@ used from cron or a monitoring system:
 	}
 
 	c.Flags().BoolVar(&asJSON, "json", false, "Output as JSON")
+	c.Flags().BoolVar(&list, "list", false, "List the checks and exit")
+	c.Flags().StringSliceVar(&skip, "skip", nil, "Checks to turn off, added to the ones in config.yaml")
+	c.Flags().StringSliceVar(&only, "only", nil, "Run only these checks, ignoring skip in config.yaml")
+	c.MarkFlagsMutuallyExclusive("skip", "only")
 
 	return c
+}
+
+// doctorOptions combines config.yaml and the flags into doctor.Options.
+func doctorOptions(skip, only []string) (doctor.Options, error) {
+	settings, err := config.LoadSettings()
+	if err != nil {
+		return doctor.Options{}, err
+	}
+	ds := settings.Doctor
+
+	if err := doctor.ValidateNames(ds.Skip); err != nil {
+		return doctor.Options{}, fmt.Errorf("config.yaml: doctor.skip: %w", err)
+	}
+	if err := doctor.ValidateNames(skip); err != nil {
+		return doctor.Options{}, fmt.Errorf("--skip: %w", err)
+	}
+	if err := doctor.ValidateNames(only); err != nil {
+		return doctor.Options{}, fmt.Errorf("--only: %w", err)
+	}
+
+	th := applyThresholds(doctor.DefaultThresholds(), ds.Thresholds)
+	if err := th.Validate(); err != nil {
+		return doctor.Options{}, fmt.Errorf("config.yaml: doctor.thresholds: %w", err)
+	}
+
+	opts := doctor.Options{Thresholds: th, Now: time.Now(), Only: only}
+	if len(only) == 0 {
+		opts.Skip = append(slices.Clone(ds.Skip), skip...)
+	}
+	return opts, nil
+}
+
+// applyThresholds overrides th with the values set in config.yaml.
+func applyThresholds(th doctor.Thresholds, c config.DoctorThresholds) doctor.Thresholds {
+	setFloat := func(dst *float64, v *float64) {
+		if v != nil {
+			*dst = *v
+		}
+	}
+	setDays := func(dst *time.Duration, v *int) {
+		if v != nil {
+			*dst = time.Duration(*v) * 24 * time.Hour
+		}
+	}
+	setFloat(&th.VolumeUsageWarn, c.VolumeUsage.Warn)
+	setFloat(&th.VolumeUsageFail, c.VolumeUsage.Fail)
+	setFloat(&th.DiskTempWarn, c.DiskTemperature.Warn)
+	setFloat(&th.DiskTempFail, c.DiskTemperature.Fail)
+	setDays(&th.ScrubAgeWarn, c.ScrubAgeDays)
+	setDays(&th.SecurityScanAgeWarn, c.SecurityScanAgeDays)
+	setDays(&th.CertExpiryWarn, c.CertExpiryDays)
+	setDays(&th.RenewableCertExpiryWarn, c.RenewableCertExpiryDays)
+	return th
+}
+
+func printChecks(out io.Writer) error {
+	w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "CHECK\tDESCRIPTION")
+	for _, c := range doctor.Checks {
+		fmt.Fprintf(w, "%s\t%s\n", c.Name, c.Description)
+	}
+	return w.Flush()
 }
 
 func exitStatus(code int) string {

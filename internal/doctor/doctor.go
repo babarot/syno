@@ -4,6 +4,7 @@ package doctor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -71,6 +72,32 @@ type Thresholds struct {
 	RenewableCertExpiryWarn time.Duration
 }
 
+// Validate reports thresholds that cannot work, such as a warn level above
+// the fail level.
+func (t Thresholds) Validate() error {
+	var errs []error
+	if !(0 < t.VolumeUsageWarn && t.VolumeUsageWarn < t.VolumeUsageFail && t.VolumeUsageFail <= 100) {
+		errs = append(errs, fmt.Errorf("volume_usage: want 0 < warn (%g) < fail (%g) <= 100", t.VolumeUsageWarn, t.VolumeUsageFail))
+	}
+	if !(0 < t.DiskTempWarn && t.DiskTempWarn < t.DiskTempFail) {
+		errs = append(errs, fmt.Errorf("disk_temperature: want 0 < warn (%g) < fail (%g)", t.DiskTempWarn, t.DiskTempFail))
+	}
+	for _, d := range []struct {
+		name string
+		v    time.Duration
+	}{
+		{"scrub_age_days", t.ScrubAgeWarn},
+		{"security_scan_age_days", t.SecurityScanAgeWarn},
+		{"cert_expiry_days", t.CertExpiryWarn},
+		{"renewable_cert_expiry_days", t.RenewableCertExpiryWarn},
+	} {
+		if d.v <= 0 {
+			errs = append(errs, fmt.Errorf("%s: want a positive number of days", d.name))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 func DefaultThresholds() Thresholds {
 	return Thresholds{
 		VolumeUsageWarn: 85,
@@ -104,22 +131,47 @@ type Env struct {
 
 // Check is one health check.
 type Check struct {
-	Name string
-	Run  func(ctx context.Context, env *Env) (Result, error)
+	Name        string
+	Description string
+	Run         func(ctx context.Context, env *Env) (Result, error)
 }
 
 // Checks lists every check in the order they are reported.
 var Checks = []Check{
-	{"pools", checkPools},
-	{"volumes", checkVolumes},
-	{"disks", checkDisks},
-	{"disk-temperature", checkDiskTemperature},
-	{"scrubbing", checkScrubbing},
-	{"system-temperature", checkSystemTemperature},
-	{"reboot", checkReboot},
-	{"dsm-update", checkDSMUpdate},
-	{"security-advisor", checkSecurityAdvisor},
-	{"certificates", checkCertificates},
+	{"pools", "Storage pools have no failed or missing disks and DSM reports them normal", checkPools},
+	{"volumes", "Volumes are below the usage thresholds and DSM reports them normal", checkVolumes},
+	{"disks", "Disk status, SMART and the remaining life DSM estimates are normal", checkDisks},
+	{"disk-temperature", "Disks are below the temperature thresholds", checkDiskTemperature},
+	{"scrubbing", "Data scrubbing runs on a schedule and ran recently", checkScrubbing},
+	{"system-temperature", "DSM does not warn about the system temperature", checkSystemTemperature},
+	{"reboot", "No reboot is pending to finish an update", checkReboot},
+	{"dsm-update", "DSM is up to date (the NAS asks Synology's update server)", checkDSMUpdate},
+	{"security-advisor", "Security Advisor has no findings and scanned recently", checkSecurityAdvisor},
+	{"certificates", "Certificates are valid and not about to expire", checkCertificates},
+}
+
+// CheckNames returns the names of every check, in report order.
+func CheckNames() []string {
+	names := make([]string, len(Checks))
+	for i, c := range Checks {
+		names[i] = c.Name
+	}
+	return names
+}
+
+// ValidateNames fails on names that are not checks.
+func ValidateNames(names []string) error {
+	valid := CheckNames()
+	var unknown []string
+	for _, n := range names {
+		if !slices.Contains(valid, n) {
+			unknown = append(unknown, n)
+		}
+	}
+	if len(unknown) > 0 {
+		return fmt.Errorf("unknown check %s, want one of: %s", strings.Join(unknown, ", "), strings.Join(valid, ", "))
+	}
+	return nil
 }
 
 // Options controls a run.
@@ -128,6 +180,9 @@ type Options struct {
 	Now        time.Time
 	// Skip names checks to report as skipped without running them.
 	Skip []string
+	// Only, when not empty, names the checks to run. The others are left
+	// out of the results entirely.
+	Only []string
 }
 
 // Run runs the checks. Data is fetched once and shared between checks.
@@ -135,6 +190,9 @@ func Run(ctx context.Context, src Source, opts Options) []Result {
 	env := &Env{Source: newCachedSource(src), Thresholds: opts.Thresholds, Now: opts.Now}
 	results := make([]Result, 0, len(Checks))
 	for _, c := range Checks {
+		if len(opts.Only) > 0 && !slices.Contains(opts.Only, c.Name) {
+			continue
+		}
 		if slices.Contains(opts.Skip, c.Name) {
 			results = append(results, Result{Check: c.Name, Level: Skip, Summary: "skipped"})
 			continue
