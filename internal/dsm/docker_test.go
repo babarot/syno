@@ -96,3 +96,35 @@ func TestContainerAction(t *testing.T) {
 		t.Error("delete should be refused")
 	}
 }
+
+func TestContainerStats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":{
+			"5729f065": {"name": "/web-app-1", "read": "2026-10-09T15:51:49Z",
+				"cpu_stats": {"cpu_usage": {"total_usage": 65579607}, "system_cpu_usage": 33289597340000000, "online_cpus": 4},
+				"memory_stats": {"usage": 3993600, "limit": 4079349760, "stats": {"inactive_file": 20480}}},
+			"6c06daff": {"name": "/old-job", "read": "0001-01-01T00:00:00Z",
+				"cpu_stats": {"cpu_usage": {"total_usage": 0}, "system_cpu_usage": null, "online_cpus": null},
+				"memory_stats": {"usage": null}}
+		}}`))
+	}))
+	defer srv.Close()
+
+	stats, err := NewInsecure(srv.URL).ContainerStats(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	web, ok := stats["web-app-1"]
+	if !ok {
+		t.Fatalf("no web-app-1 in %v", stats)
+	}
+	if web.CPUStats.OnlineCPUs != 4 || web.MemoryBytes() != 3993600-20480 {
+		t.Errorf("web-app-1 = %+v, memory %v", web, web.MemoryBytes())
+	}
+	if old := stats["old-job"]; old.MemoryBytes() != 0 {
+		t.Errorf("old-job memory = %v, want 0", old.MemoryBytes())
+	}
+	if _, ok := CPUPercent(stats["old-job"], stats["old-job"]); ok {
+		t.Error("a stopped container should have no CPU figure")
+	}
+}

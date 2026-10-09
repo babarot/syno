@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 // Container is one entry of SYNO.Docker.Container list. Only the fields syno
@@ -103,4 +104,60 @@ func (c *Client) ContainerAction(ctx context.Context, action, name string) (*Con
 		return nil, err
 	}
 	return &out, nil
+}
+
+// ContainerStat is the part of one entry of SYNO.Docker.Container stats
+// that syno uses. The entries are Docker's stats (stream=false), so
+// PreCPUStats is empty and CPU usage needs two samples.
+type ContainerStat struct {
+	Name     string `json:"name"` // "/web-app-1"
+	CPUStats struct {
+		CPUUsage struct {
+			TotalUsage Num `json:"total_usage"` // nanoseconds
+		} `json:"cpu_usage"`
+		SystemCPUUsage Num `json:"system_cpu_usage"`
+		OnlineCPUs     Num `json:"online_cpus"`
+	} `json:"cpu_stats"`
+	MemoryStats struct {
+		Usage Num `json:"usage"` // bytes, page cache included
+		Stats struct {
+			InactiveFile Num `json:"inactive_file"`
+		} `json:"stats"`
+	} `json:"memory_stats"`
+}
+
+// MemoryBytes is the memory the container uses without the page cache it
+// could give back, as docker stats shows it.
+func (s ContainerStat) MemoryBytes() float64 {
+	used := float64(s.MemoryStats.Usage)
+	if inactive := float64(s.MemoryStats.Stats.InactiveFile); inactive < used {
+		used -= inactive
+	}
+	return used
+}
+
+// CPUPercent is the CPU the container used between two samples, where 100%
+// is one core, as docker stats shows it. It is false when the samples
+// cannot tell, as for a stopped container.
+func CPUPercent(before, after ContainerStat) (float64, bool) {
+	cpu := float64(after.CPUStats.CPUUsage.TotalUsage - before.CPUStats.CPUUsage.TotalUsage)
+	system := float64(after.CPUStats.SystemCPUUsage - before.CPUStats.SystemCPUUsage)
+	if system <= 0 || cpu < 0 || after.CPUStats.OnlineCPUs == 0 {
+		return 0, false
+	}
+	return cpu / system * float64(after.CPUStats.OnlineCPUs) * 100, true
+}
+
+// ContainerStats returns the stats of the containers by name. Stopped
+// containers are included with empty values.
+func (c *Client) ContainerStats(ctx context.Context) (map[string]ContainerStat, error) {
+	var byID map[string]ContainerStat
+	if err := c.Call(ctx, ContainerAPI, 1, "stats", nil, &byID); err != nil {
+		return nil, err
+	}
+	out := make(map[string]ContainerStat, len(byID))
+	for _, s := range byID {
+		out[strings.TrimPrefix(s.Name, "/")] = s
+	}
+	return out, nil
 }

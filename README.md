@@ -169,6 +169,15 @@ syno container list --running
 syno container list --project web --json
 ```
 
+`--usage` adds the CPU and memory each running container uses, as `docker stats` shows them: 100% CPU is one core, and memory leaves out the page cache. CPU needs two samples of the stats, so it takes a second or two longer.
+
+```console
+$ syno container list --running --usage
+NAME        STATE     HEALTH    PROJECT   IMAGE                CPU    MEM       STATUS
+web-app-1   running   healthy   web       example/app:latest   4.2%   31.5 MB   Up 2 days
+proxy       running   -         -         nginx:latest         0.1%   4.5 MB    Up 5 days
+```
+
 `start`, `stop` and `restart` act on containers, one after another in the order given. syno asks before changing anything, and `--yes` skips the question, as scripts and AI agents need. Each action takes a few seconds. Starting a running container or stopping a stopped one does nothing. When a container fails to start, syno shows the reason Docker gave, which DSM does not, and leaves the rest alone.
 
 ```console
@@ -257,7 +266,7 @@ Runs an MCP server over stdio, so that an AI assistant such as Claude Code can a
 |------|---------|
 | `syno_status` | `syno status --json` |
 | `syno_doctor` | `syno doctor --json`, with `skip` and `only` |
-| `syno_containers` | `syno container list --json`, with `running` and `project` |
+| `syno_containers` | `syno container list --json`, with `running`, `project` and `usage` |
 | `syno_packages` | `syno package list --json`, with `outdated` |
 | `syno_shares` | `syno share list --json`, with `recycle` |
 | `syno_api_list` | `syno api --list --json`, with `filter`, under `apis` next to `host` |
