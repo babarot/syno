@@ -1,0 +1,17 @@
+{
+  "name": "syno",
+  "version": "0.1.0",
+  "description": "Answer questions about a Synology NAS with syno: the syno skill and the syno mcp server",
+  "author": {
+    "name": "babarot"
+  },
+  "homepage": "https://github.com/babarot/syno",
+  "repository": "https://github.com/babarot/syno",
+  "license": "MIT",
+  "mcpServers": {
+    "syno": {
+      "command": "syno",
+      "args": ["mcp"]
+    }
+  }
+}

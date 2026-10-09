@@ -231,6 +231,12 @@ gh skill install babarot/syno syno --agent claude-code --scope user
 npx skills add babarot/syno -g
 ```
 
+In Claude Code, the plugin installs the skill and registers `syno mcp` (without `--allow-api`) in one step:
+
+```
+/plugin install syno --marketplace babarot/syno
+```
+
 The release archives carry the skill too, and the Nix package installs it in `share/skills/syno`, so that Home Manager can link it with the binary of the same release:
 
 ```nix
