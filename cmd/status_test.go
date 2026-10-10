@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"text/tabwriter"
+	"time"
 
 	"github.com/babarot/syno/internal/dsm"
 )
@@ -138,5 +139,68 @@ func TestPrintBays(t *testing.T) {
 		if got != want {
 			t.Errorf("printBays(%s) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestScrubbed(t *testing.T) {
+	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		pool dsm.StoragePool
+		want string
+	}{
+		{dsm.StoragePool{LastDoneTime: now.Add(-20 * 24 * time.Hour).Unix(), IsScheduled: true}, "20d ago"},
+		{dsm.StoragePool{LastDoneTime: now.Add(-733 * 24 * time.Hour).Unix()}, "733d ago (no schedule)"},
+		{dsm.StoragePool{IsScheduled: true}, "never"},
+	}
+	for _, tt := range tests {
+		if got := scrubbed(tt.pool, now); got != tt.want {
+			t.Errorf("scrubbed(%+v) = %q, want %q", tt.pool, got, tt.want)
+		}
+	}
+}
+
+func TestStatusReportIO(t *testing.T) {
+	var st dsm.Storage
+	if err := json.Unmarshal([]byte(`{
+		"storagePools": [{"id": "reuse_1", "num_id": 1, "last_done_time": 1728181851, "is_scheduled": false}],
+		"volumes": [{"vol_path": "/volume1", "pool_path": "reuse_1"}, {"vol_path": "/volume2"}],
+		"disks": [{"id": "sata1", "name": "Drive 1"}]
+	}`), &st); err != nil {
+		t.Fatal(err)
+	}
+	var u dsm.Utilization
+	if err := json.Unmarshal([]byte(`{
+		"space": {"volume": [{"display_name": "volume1", "read_byte": 1024, "write_byte": 2048, "utilization": 9}]},
+		"disk": {"disk": [{"device": "sata1", "utilization": 5}]}
+	}`), &u); err != nil {
+		t.Fatal(err)
+	}
+	r := (&status{sys: &dsm.SystemInfo{}, util: &u, st: &st}).report()
+
+	if p := r.Pools[0]; p.LastScrubbed == nil || p.LastScrubbed.Unix() != 1728181851 || p.ScrubScheduled {
+		t.Errorf("pool = %+v", p)
+	}
+	if v := r.Volumes[0]; v.ReadBytesPerSec == nil || *v.ReadBytesPerSec != 1024 || *v.WriteBytesPerSec != 2048 || *v.BusyPercent != 9 {
+		t.Errorf("volume1 = %+v", v.ioReport)
+	}
+	if v := r.Volumes[1]; v.ReadBytesPerSec != nil {
+		t.Errorf("volume2, which DSM did not report, has I/O %+v", v.ioReport)
+	}
+	if d := r.Disks[0]; d.BusyPercent == nil || *d.BusyPercent != 5 {
+		t.Errorf("disk = %+v", d.ioReport)
+	}
+
+	var out strings.Builder
+	w := tabwriter.NewWriter(&out, 0, 0, 3, ' ', 0)
+	printVolumes(w, &st, &u)
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if f := strings.Fields(lines[1]); !slices.Contains(f, "1.0") || !slices.Contains(f, "KB/s") {
+		t.Errorf("volume1 row = %q", lines[1])
+	}
+	if f := strings.Fields(lines[2]); f[len(f)-1] != "-" {
+		t.Errorf("volume2 row = %q", lines[2])
 	}
 }

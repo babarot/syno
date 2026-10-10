@@ -77,3 +77,41 @@ func TestBays(t *testing.T) {
 		t.Error("a DSM that does not send bay_number has bays")
 	}
 }
+
+func TestRAIDName(t *testing.T) {
+	tests := map[string]string{
+		"shr_with_1_disk_protect":  "SHR",
+		"shr_with_2_disk_protect":  "SHR-2",
+		"shr_without_disk_protect": "SHR (no protection)",
+		"raid_5":                   "RAID 5",
+		"raid_10":                  "RAID 10",
+		"raid_f1":                  "RAID F1",
+		"raid_linear":              "JBOD",
+		"basic":                    "Basic",
+		"something_new":            "something_new",
+	}
+	for in, want := range tests {
+		if got := RAIDName(in); got != want {
+			t.Errorf("RAIDName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestUtilizationIO(t *testing.T) {
+	var u Utilization
+	if err := json.Unmarshal([]byte(`{
+		"space": {"volume": [{"device": "dm-1", "display_name": "volume1", "read_byte": 5421465, "write_byte": 0, "utilization": 9}]},
+		"disk": {"disk": [{"device": "sata2", "display_name": "Drive 2", "read_byte": 1805516, "write_byte": 16384, "utilization": 6}]}
+	}`), &u); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := u.VolumeIO("/volume1"); !ok || v.ReadBytes != 5421465 || v.Utilization != 9 {
+		t.Errorf("VolumeIO(/volume1) = %+v, %v", v, ok)
+	}
+	if _, ok := u.VolumeIO("/volume2"); ok {
+		t.Error("found a volume DSM did not report")
+	}
+	if d, ok := u.DiskIO("sata2"); !ok || d.WriteBytes != 16384 || d.Utilization != 6 {
+		t.Errorf("DiskIO(sata2) = %+v, %v", d, ok)
+	}
+}

@@ -93,7 +93,7 @@ Every command that logs in uses the profile given by `--profile` (`-p`), then `S
 
 ### status
 
-Shows the system, CPU and memory usage, storage pools, volumes and disks. `Drive bays` counts the bays of the NAS itself, without M.2 slots and expansion units, and names the empty ones. For each disk, `LIFE` is the life left that DSM estimates, which it does for most SSDs and not for HDDs, and `POWER-ON` is how long the disk has run, from SMART. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
+Shows the system, CPU and memory usage, storage pools, volumes and disks. `Drive bays` counts the bays of the NAS itself, without M.2 slots and expansion units, and names the empty ones. `SCRUBBED` is when data scrubbing last finished on the pool, and says so when it has no schedule. `READ` and `WRITE` are what the volume reads and writes per second at the moment, which DSM measures every few seconds; `--json` also has how busy each volume and disk is. For each disk, `LIFE` is the life left that DSM estimates, which it does for most SSDs and not for HDDs, and `POWER-ON` is how long the disk has run, from SMART. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
 
 ```console
 $ syno status
@@ -108,11 +108,11 @@ SYSTEM
   Memory        21% of 3.8 GB
   Drive bays    4 of 4 used
 
-POOL     STATUS   TYPE                      DISKS   USED      TOTAL     USE%
-Pool 1   normal   shr_with_1_disk_protect   4       19.1 TB   21.8 TB   88%
+POOL     STATUS   TYPE   DISKS   USED      TOTAL     USE%   SCRUBBED
+Pool 1   normal   SHR    4       19.1 TB   21.8 TB   88%    20d ago
 
-VOLUME     STATUS   FS      POOL     USED      TOTAL     USE%
-/volume1   normal   btrfs   Pool 1   18.6 TB   21.1 TB   88%
+VOLUME     STATUS   FS      POOL     USED      TOTAL     USE%   READ       WRITE
+/volume1   normal   btrfs   Pool 1   18.6 TB   21.1 TB   88%    1.2 MB/s   64.0 KB/s
 
 DISK      MODEL                        SIZE     STATUS   SMART    TEMP   LIFE   POWER-ON   POOL
 Drive 1   WDC WD80EFZZ-68BTXN0         7.3 TB   normal   normal   37°C   -      2.7y       Pool 1
