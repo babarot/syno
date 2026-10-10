@@ -77,7 +77,7 @@ used from cron or a monitoring system:
 					return err
 				}
 			} else {
-				printResults(os.Stdout, report.Results, term.IsTerminal(int(os.Stdout.Fd())))
+				printResults(os.Stdout, report.Results, useColor(os.Stdout))
 			}
 
 			if code != 0 {
@@ -193,6 +193,18 @@ func exitStatus(code int) string {
 	return [...]string{"ok", "warn", "fail", "unknown"}[code]
 }
 
+// useColor reports whether output to f is colored: only on a terminal, and
+// not when NO_COLOR is set (https://no-color.org).
+func useColor(f *os.File) bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
+
+// levelMarks are the marks of the levels. tabwriter counts the escape
+// sequences as width, so the colors keep to codes of the same length to
+// leave the columns aligned.
 var levelMarks = map[doctor.Level]struct {
 	mark  string
 	color string // ANSI color code
