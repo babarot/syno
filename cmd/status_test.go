@@ -119,3 +119,24 @@ func TestStatusReportDisks(t *testing.T) {
 		t.Errorf("M.2 row = %q", lines[2])
 	}
 }
+
+func TestPrintBays(t *testing.T) {
+	tests := map[string]string{
+		`{"env":{"bay_number":"4"},"disks":[{"slot_id":1,"container":{"type":"internal"}},{"slot_id":2,"container":{"type":"internal"}},{"slot_id":3,"container":{"type":"internal"}}]}`: "3 of 4 used (bay 4 empty)",
+		`{"env":{"bay_number":"4"},"disks":[{"slot_id":1,"container":{"type":"internal"}},{"slot_id":3,"container":{"type":"internal"}}]}`:                                               "2 of 4 used (bays 2, 4 empty)",
+		`{"env":{"bay_number":"2"},"disks":[{"slot_id":1,"container":{"type":"internal"}},{"slot_id":2,"container":{"type":"internal"}}]}`:                                               "2 of 2 used",
+		`{"disks":[]}`: "",
+	}
+	for in, want := range tests {
+		var st dsm.Storage
+		if err := json.Unmarshal([]byte(in), &st); err != nil {
+			t.Fatal(err)
+		}
+		var out strings.Builder
+		printBays(&out, &st)
+		got := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(out.String()), "Drive bays"))
+		if got != want {
+			t.Errorf("printBays(%s) = %q, want %q", in, got, want)
+		}
+	}
+}

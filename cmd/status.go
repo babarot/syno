@@ -49,6 +49,7 @@ func newStatusCmd() *cobra.Command {
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 			printSystem(w, s.host, s.sys, s.util)
+			printBays(w, s.st)
 			fmt.Fprintln(w)
 			printPools(w, s.st)
 			fmt.Fprintln(w)
@@ -141,18 +142,36 @@ func powerOnHours(ctx context.Context, c diskHealthSource, disks []dsm.Disk) map
 // statusReport is the JSON of syno status --json and the syno_status MCP
 // tool: the table's contents with sizes in bytes.
 type statusReport struct {
-	Host          string         `json:"host"`
-	Model         string         `json:"model"`
-	Serial        string         `json:"serial"`
-	DSM           string         `json:"dsm"`
-	Uptime        string         `json:"uptime"`
-	TemperatureC  float64        `json:"temperature_c"`
-	CPUPercent    float64        `json:"cpu_percent"`
-	MemoryPercent float64        `json:"memory_percent"`
-	MemoryBytes   float64        `json:"memory_bytes"`
-	Pools         []poolReport   `json:"pools"`
-	Volumes       []volumeReport `json:"volumes"`
-	Disks         []diskReport   `json:"disks"`
+	Host          string  `json:"host"`
+	Model         string  `json:"model"`
+	Serial        string  `json:"serial"`
+	DSM           string  `json:"dsm"`
+	Uptime        string  `json:"uptime"`
+	TemperatureC  float64 `json:"temperature_c"`
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryPercent float64 `json:"memory_percent"`
+	MemoryBytes   float64 `json:"memory_bytes"`
+	// Bays is left out when DSM does not say how many the NAS has.
+	Bays    *bayReport     `json:"bays,omitempty"`
+	Pools   []poolReport   `json:"pools"`
+	Volumes []volumeReport `json:"volumes"`
+	Disks   []diskReport   `json:"disks"`
+}
+
+// bayReport is the drive bays of the NAS itself, without M.2 slots and
+// expansion units.
+type bayReport struct {
+	Total int   `json:"total"`
+	Used  int   `json:"used"`
+	Empty []int `json:"empty"`
+}
+
+func newBayReport(st *dsm.Storage) *bayReport {
+	total, empty, ok := st.Bays()
+	if !ok {
+		return nil
+	}
+	return &bayReport{Total: total, Used: total - len(empty), Empty: append([]int{}, empty...)}
 }
 
 type poolReport struct {
@@ -200,6 +219,7 @@ func (s *status) report() statusReport {
 		MemoryPercent: float64(u.Memory.RealUsage),
 		MemoryBytes:   float64(u.Memory.TotalReal) * 1024,
 	}
+	r.Bays = newBayReport(s.st)
 	r.Pools, r.Volumes, r.Disks = storageReports(s.st, s.powerOn)
 	return r
 }
@@ -246,6 +266,27 @@ func printSystem(w io.Writer, host string, s *dsm.SystemInfo, u *dsm.Utilization
 	fmt.Fprintf(w, "  Temperature\t%.0f°C\n", float64(s.SysTemp))
 	fmt.Fprintf(w, "  CPU\t%.0f%%\n", float64(cpu))
 	fmt.Fprintf(w, "  Memory\t%.0f%% of %s\n", float64(u.Memory.RealUsage), humanBytes(float64(u.Memory.TotalReal)*1024))
+}
+
+// printBays adds the drive bays to the SYSTEM section.
+func printBays(w io.Writer, st *dsm.Storage) {
+	b := newBayReport(st)
+	if b == nil {
+		return
+	}
+	line := fmt.Sprintf("%d of %d used", b.Used, b.Total)
+	if len(b.Empty) > 0 {
+		nums := make([]string, len(b.Empty))
+		for i, n := range b.Empty {
+			nums[i] = strconv.Itoa(n)
+		}
+		word := "bay"
+		if len(nums) > 1 {
+			word = "bays"
+		}
+		line += fmt.Sprintf(" (%s %s empty)", word, strings.Join(nums, ", "))
+	}
+	fmt.Fprintf(w, "  Drive bays\t%s\n", line)
 }
 
 func printPools(w io.Writer, st *dsm.Storage) {
