@@ -17,6 +17,7 @@ const state = {
   data: {},      // "profile/panel" -> the server's answer
   hist: { cpu: [], mem: [] },
   io: {},        // volume path -> { read: [], write: [] }, like hist
+  scrub: {},     // pool name -> samples of a running scrubbing, [{ t, pct }]
   timers: [],
 };
 
@@ -134,16 +135,47 @@ function bayOrder(d) {
 // drawPool tells the state of the pool a volume is on, and when it was
 // last scrubbed.
 function drawPool(p, th) {
+  const running = p.scrub_percent != null;
   const days = p.last_scrubbed ? (Date.now() - Date.parse(p.last_scrubbed)) / 86400000 : null;
-  const scrubLate = days == null || days > th.scrub_age_days || !p.scrub_scheduled;
+  const scrubLate = !running && (days == null || days > th.scrub_age_days) || !p.scrub_scheduled;
   const scrub = days == null ? "never scrubbed" : `scrubbed ${Math.floor(days)} days ago`;
+  // DSM shows the scrubbing in place of the pool's status.
+  const status = running && p.status === "background_scrubbing" ? "normal, being scrubbed" : p.status;
   return `<div class="pool"><h4>${esc(p.name)}</h4>
     <dl class="kvs">
-      <dt>Status</dt><dd class="${p.status === "normal" ? "" : "c-fail"}">${esc(p.status)}</dd>
+      <dt>Status</dt><dd class="${p.status === "normal" || status !== p.status ? "" : "c-fail"}">${esc(status)}</dd>
       <dt>RAID</dt><dd>${esc(p.raid)} · ${p.disks} ${p.disks === 1 ? "disk" : "disks"}</dd>
       <dt>Size</dt><dd>${hb(p.used_bytes)} of ${hb(p.total_bytes)}</dd>
-      <dt>Scrubbing</dt><dd class="${scrubLate ? "c-warn" : ""}">${scrub}${p.scrub_scheduled ? "" : ", no schedule"}</dd>
-    </dl></div>`;
+      <dt>Scrubbing</dt><dd class="${scrubLate ? "c-warn" : ""}">${running ? "running now" : scrub}${p.scrub_scheduled ? "" : ", no schedule"}</dd>
+    </dl>${running ? drawScrub(p) : ""}</div>`;
+}
+
+// drawScrub shows how far a running scrubbing has got. DSM gives no time
+// left, so the page guesses it from how fast the percent went up while it
+// was open.
+function drawScrub(p) {
+  const pct = p.scrub_percent, samples = state.scrub[p.name] || [];
+  let left = "time left: watching how fast it goes…";
+  if (samples.length >= 2) {
+    const a = samples[0], b = samples[samples.length - 1];
+    const rate = (b.pct - a.pct) / ((b.t - a.t) / 3600000); // percent an hour
+    if (rate > 0) {
+      const h = (100 - pct) / rate;
+      left = `about ${h < 1 ? Math.max(1, Math.round(h * 60)) + " min" : h < 48 ? Math.round(h) + " h" : Math.round(h / 24) + " days"} left, guessed from the last ${ago((b.t - a.t) / 1000)}`;
+    }
+  }
+  return `<div class="scrub"><div class="stackbar"><i style="width:${pct}%;background:var(--info)"></i></div>
+    <div class="legend"><span>scrubbing ${pct.toFixed(2)}%</span><span class="c-muted">${left}</span></div></div>`;
+}
+
+// trackScrub keeps the samples drawScrub guesses the time left from.
+function trackScrub(storage) {
+  const now = Date.now();
+  for (const p of storage.pools) {
+    if (p.scrub_percent == null) { delete state.scrub[p.name]; continue; }
+    const s = state.scrub[p.name] ||= [];
+    if (!s.length || s[s.length - 1].pct !== p.scrub_percent) s.push({ t: now, pct: p.scrub_percent });
+  }
 }
 
 // drawIO draws what each volume read and wrote over the last 2 minutes,
@@ -318,7 +350,7 @@ function render(panel) {
   switch (panel) {
     case "doctor": drawHealth(e.data, data("updates")); break;
     case "system": case "info": drawSystem(data("system"), data("info")); drawIO(); break;
-    case "storage": drawStorage(e.data, data("recycle")); break;
+    case "storage": trackScrub(e.data); drawStorage(e.data, data("recycle")); break;
     case "containers": drawContainers(e.data); break;
     case "shares": drawShares(e.data, data("recycle")); break;
     case "recycle":
@@ -398,6 +430,7 @@ function select(profile) {
   state.cur = profile;
   state.hist = { cpu: [], mem: [] };
   state.io = {};
+  state.scrub = {};
   store("syno.profile", profile);
   $("host").textContent = get(profile, "info")?.data?.host || "";
   for (const panel of Object.keys(state.intervals)) render(panel);

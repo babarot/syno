@@ -152,3 +152,5 @@ footer code { font-family: var(--mono); }
 .volmore h4 .c-muted { font-weight: 400; margin-left: 6px; }
 .volmore .kvs { margin-top: 0; }
 .volio svg.area { height: 60px; }
+.pool .scrub { margin-top: 8px; }
+.pool .scrub .stackbar { height: 8px; margin: 4px 0; }
