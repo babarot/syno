@@ -3,7 +3,10 @@ package doctor
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/babarot/syno/internal/dsm"
 )
 
 func checkPools(ctx context.Context, env *Env) (Result, error) {
@@ -11,9 +14,13 @@ func checkPools(ctx context.Context, env *Env) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	var f findings
+	var (
+		f     findings
+		notes []string
+	)
 	for _, p := range st.StoragePools {
 		name := poolName(p)
+		pct, scrubbing := p.Scrubbing()
 		switch {
 		case p.DiskFailureNumber > 0:
 			f.add(Fail, "%s has %s", name, plural(p.DiskFailureNumber, "failed disk"))
@@ -21,11 +28,19 @@ func checkPools(ctx context.Context, env *Env) (Result, error) {
 			f.add(Fail, "%s is missing %s", name, plural(len(p.MissingDrives), "drive"))
 		case isSpaceOnly(p):
 			// Reported by the volumes check.
+		case scrubbing && p.Status == dsm.StatusScrubbing:
+			// DSM shows the scrubbing in place of the pool's status, which
+			// is maintenance rather than a problem.
+			notes = append(notes, fmt.Sprintf("%s is being scrubbed (%.2f%%)", name, pct))
 		default:
 			f.add(summaryLevel(p.SummaryStatus), "%s is %s", name, p.Status)
 		}
 	}
-	return f.result(plural(len(st.StoragePools), "pool") + " healthy"), nil
+	ok := plural(len(st.StoragePools), "pool") + " healthy"
+	if len(notes) > 0 {
+		ok += ", " + strings.Join(notes, ", ")
+	}
+	return f.result(ok), nil
 }
 
 func checkVolumes(ctx context.Context, env *Env) (Result, error) {
@@ -128,8 +143,17 @@ func checkScrubbing(ctx context.Context, env *Env) (Result, error) {
 	}
 	var f findings
 	var oldest time.Duration
+	var running []string
 	for _, p := range st.StoragePools {
 		name := poolName(p)
+		if pct, ok := p.Scrubbing(); ok {
+			// How long ago it last finished no longer matters.
+			running = append(running, fmt.Sprintf("%s is being scrubbed now (%.2f%%)", name, pct))
+			if !p.IsScheduled {
+				f.add(Warn, "%s has no scrubbing schedule", name)
+			}
+			continue
+		}
 		if p.LastDoneTime == 0 {
 			f.add(Warn, "%s has never been scrubbed", name)
 		} else {
@@ -142,6 +166,14 @@ func checkScrubbing(ctx context.Context, env *Env) (Result, error) {
 		if !p.IsScheduled {
 			f.add(Warn, "%s has no scrubbing schedule", name)
 		}
+	}
+	if len(running) > 0 {
+		// The issues left are the missing schedules.
+		r := f.result(strings.Join(running, ", "))
+		if r.Level != OK {
+			r.Details = append(r.Details, running...)
+		}
+		return r, nil
 	}
 	return f.result(fmt.Sprintf("scheduled, last run at most %s ago", days(oldest))), nil
 }

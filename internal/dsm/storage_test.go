@@ -115,3 +115,23 @@ func TestUtilizationIO(t *testing.T) {
 		t.Errorf("DiskIO(sata2) = %+v, %v", d, ok)
 	}
 }
+
+func TestPoolScrubbing(t *testing.T) {
+	var pools []StoragePool
+	if err := json.Unmarshal([]byte(`[
+		{"status": "background_scrubbing", "scrubbingStatus": "manual_running", "progress": {"step": "waiting", "percent": "0.30"}},
+		{"status": "normal", "scrubbingStatus": "ready", "progress": {"step": "none", "percent": "-1"}},
+		{"status": "background_scrubbing", "scrubbingStatus": "manual_running", "progress": {"step": "waiting", "percent": "-1"}}
+	]`), &pools); err != nil {
+		t.Fatal(err)
+	}
+	if pct, ok := pools[0].Scrubbing(); !ok || pct != 0.3 {
+		t.Errorf("running: %v, %v", pct, ok)
+	}
+	if _, ok := pools[1].Scrubbing(); ok {
+		t.Error("an idle pool is scrubbing")
+	}
+	if pct, ok := pools[2].Scrubbing(); !ok || pct != 0 {
+		t.Errorf("just started: %v, %v, want 0, true", pct, ok)
+	}
+}

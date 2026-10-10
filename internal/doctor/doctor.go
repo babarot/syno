@@ -141,11 +141,11 @@ type Check struct {
 
 // Checks lists every check in the order they are reported.
 var Checks = []Check{
-	{"pools", "Storage pools have no failed or missing disks and DSM reports them normal", checkPools},
+	{"pools", "Storage pools have no failed or missing disks and DSM reports them normal (data scrubbing counts as normal)", checkPools},
 	{"volumes", "Volumes are below the usage thresholds and DSM reports them normal", checkVolumes},
 	{"disks", "Disk status, SMART and the remaining life DSM estimates are normal", checkDisks},
 	{"disk-temperature", "Disks are below the temperature thresholds", checkDiskTemperature},
-	{"scrubbing", "Data scrubbing runs on a schedule and ran recently", checkScrubbing},
+	{"scrubbing", "Data scrubbing runs on a schedule and ran recently, or runs now", checkScrubbing},
 	{"system-temperature", "DSM does not warn about the system temperature", checkSystemTemperature},
 	{"reboot", "No reboot is pending to finish an update", checkReboot},
 	{"dsm-update", "DSM is up to date (the NAS asks Synology's update server)", checkDSMUpdate},

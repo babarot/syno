@@ -83,6 +83,27 @@ type StoragePool struct {
 	LastDoneTime int64 `json:"last_done_time"`
 	// IsScheduled reports whether data scrubbing runs on a schedule.
 	IsScheduled bool `json:"is_scheduled"`
+	// ScrubbingStatus is "ready", or like "manual_running" while data
+	// scrubbing runs.
+	ScrubbingStatus string `json:"scrubbingStatus"`
+	// Progress is how far a background task on the pool has got. For data
+	// scrubbing only Percent is set; Step stays "waiting".
+	Progress struct {
+		Step    string `json:"step"`
+		Percent Num    `json:"percent"` // -1 when nothing runs
+	} `json:"progress"`
+}
+
+// StatusScrubbing is the status of a pool while data scrubbing runs.
+const StatusScrubbing = "background_scrubbing"
+
+// Scrubbing reports whether data scrubbing runs on the pool, and how far it
+// has got in percent.
+func (p StoragePool) Scrubbing() (percent float64, ok bool) {
+	if p.Status != StatusScrubbing && !strings.HasSuffix(p.ScrubbingStatus, "_running") {
+		return 0, false
+	}
+	return max(float64(p.Progress.Percent), 0), true
 }
 
 type Volume struct {
