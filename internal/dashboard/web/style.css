@@ -143,3 +143,6 @@ footer code { font-family: var(--mono); }
 .sw.recycle { background: var(--warn); } .sw.share { background: var(--accent); }
 .sw.hatch { background: repeating-linear-gradient(45deg, #555 0 3px, #999 3px 6px); }
 .legend.below { margin-top: 8px; }
+.bay.empty { background: transparent; border: 2px dashed var(--border); display: grid; align-content: center; justify-items: center; min-height: 150px; color: var(--muted); }
+.bay.empty .model { font-family: inherit; font-size: 12px; }
+.ph #bay-count { font-size: 12px; }

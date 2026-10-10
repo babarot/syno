@@ -118,6 +118,18 @@ function drawSystem(sys, info) {
   }
 }
 
+// bayOrder puts the disks in the order of the bays of the NAS, with a
+// placeholder for each empty bay, then the M.2 SSDs and the disks of
+// expansion units.
+function bayOrder(d) {
+  if (!d.bays) return d.disks;
+  const inBay = {};
+  d.disks.forEach(x => { if (x.bay) inBay[x.bay] = x; });
+  const out = [];
+  for (let n = 1; n <= d.bays.total; n++) out.push(inBay[n] || { empty: n });
+  return out.concat(d.disks.filter(x => !x.bay || x.bay > d.bays.total));
+}
+
 // recycleOn sums the recycle bins of the shares on a volume, or returns null
 // before they are summed.
 function recycleOn(recycle, volume) {
@@ -142,7 +154,10 @@ function drawStorage(d, recycle) {
       ${pct >= th.volume_warn && pct - after >= 1 ? `<div class="note">Emptying the recycle bins would bring it to ${after.toFixed(1)}%.</div>` : ""}</div></div>`;
   }).join("") : `<div class="empty">No volumes.</div>`;
 
-  $("bays").innerHTML = d.disks.length ? d.disks.map(x => {
+  $("bays").innerHTML = d.disks.length || d.bays ? bayOrder(d).map(x => {
+    if (x.empty) {
+      return `<div class="bay empty"><div class="top"><span class="name">Bay ${x.empty}</span></div><div class="model">empty</div></div>`;
+    }
     const bad = x.bad_sectors > 0;
     const lv = x.status !== "normal" || x.smart !== "normal" ? "fail"
       : bad || x.temperature_c >= th.disk_temp_warn || (x.life_percent != null && x.life_percent < 20) ? "warn" : "ok";
@@ -163,6 +178,7 @@ function drawStorage(d, recycle) {
       <div class="row"><span>Power-on</span>${hours}</div>
       <div class="leds"><span class="led ${x.status === "normal" ? "on" : "bad"}">status ${esc(x.status)}</span><span class="led ${x.smart === "normal" ? "on" : "bad"}">SMART ${esc(x.smart)}</span><span class="led ${bad ? "bad" : "on"}">${x.bad_sectors} bad sectors</span><span class="led">${esc(x.pool)}</span></div></div>`;
   }).join("") : `<div class="empty">No disks.</div>`;
+  $("bay-count").textContent = d.bays ? `· ${d.bays.used} of ${d.bays.total} bays used` : "";
 }
 
 const palette = ["#7a4fe0", "#2bb3c0", "#2f7ae5", "#d0679a", "#4caf7d", "#c98a2b", "#6b7280"];

@@ -205,6 +205,7 @@ type (
 		Pools      []poolReport    `json:"pools"`
 		Volumes    []volumeReport  `json:"volumes"`
 		Disks      []dashboardDisk `json:"disks"`
+		Bays       *bayReport      `json:"bays,omitempty"`
 		Thresholds panelThresholds `json:"thresholds"`
 	}
 	// dashboardDisk adds what the disk cards show to the disk of status.
@@ -212,6 +213,9 @@ type (
 		diskReport
 		Type       string  `json:"type"`
 		BadSectors float64 `json:"bad_sectors"`
+		// Bay is the bay of the NAS the disk is in, or 0 for an M.2 SSD or
+		// a disk of an expansion unit.
+		Bay int `json:"bay,omitempty"`
 	}
 	// panelThresholds are the doctor thresholds the page colors with.
 	panelThresholds struct {
@@ -289,15 +293,22 @@ func readPanel(ctx context.Context, c *dsm.Client, panel string, cfg panelConfig
 		}
 		pools, volumes, disks := storageReports(st, powerOnHours(ctx, c, st.Disks))
 		out := storagePanel{
-			Pools: pools, Volumes: volumes, Disks: make([]dashboardDisk, len(disks)),
+			Pools: pools, Volumes: volumes, Disks: make([]dashboardDisk, len(disks)), Bays: newBayReport(st),
 			Thresholds: panelThresholds{th.VolumeUsageWarn, th.VolumeUsageFail, th.DiskTempWarn, th.DiskTempFail},
 		}
 		for i, d := range disks {
+			sd := st.Disks[i]
 			typ := "HDD"
-			if st.Disks[i].IsSSD {
+			switch {
+			case sd.IsM2():
+				typ = "M.2"
+			case sd.IsSSD:
 				typ = "SSD"
 			}
-			out.Disks[i] = dashboardDisk{diskReport: d, Type: typ, BadSectors: float64(st.Disks[i].Unc)}
+			out.Disks[i] = dashboardDisk{diskReport: d, Type: typ, BadSectors: float64(sd.Unc)}
+			if sd.Container.Type == "internal" && !sd.IsM2() {
+				out.Disks[i].Bay = sd.SlotID
+			}
 		}
 		return out, nil
 
