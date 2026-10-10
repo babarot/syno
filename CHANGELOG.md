@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.5.0](https://github.com/babarot/syno/compare/v0.4.0...v0.5.0) - 2026-10-10
+### New Features
+- Add syno dashboard, a web page of the NAS on localhost by @babarot in https://github.com/babarot/syno/pull/27
+- Show a running data scrubbing on the dashboard storage card by @babarot in https://github.com/babarot/syno/pull/32
+### Bug fixes
+- Treat running data scrubbing as maintenance, not a problem by @babarot in https://github.com/babarot/syno/pull/31
+### Improvements
+- Honor NO_COLOR in the output of syno doctor by @babarot in https://github.com/babarot/syno/pull/33
+
 ## [v0.4.0](https://github.com/babarot/syno/compare/0.3.0...v0.4.0) - 2026-10-10
 ### New Features
 - Show the life left and power-on hours of disks in status by @babarot in https://github.com/babarot/syno/pull/25
