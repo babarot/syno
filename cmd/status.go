@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -51,9 +52,9 @@ func newStatusCmd() *cobra.Command {
 			printSystem(w, s.host, s.sys, s.util)
 			printBays(w, s.st)
 			fmt.Fprintln(w)
-			printPools(w, s.st)
+			printPools(w, s.st, time.Now())
 			fmt.Fprintln(w)
-			printVolumes(w, s.st)
+			printVolumes(w, s.st, s.util)
 			fmt.Fprintln(w)
 			printDisks(w, s.st, s.powerOn)
 			return w.Flush()
@@ -181,6 +182,9 @@ type poolReport struct {
 	Disks      int     `json:"disks"`
 	UsedBytes  float64 `json:"used_bytes"`
 	TotalBytes float64 `json:"total_bytes"`
+	// LastScrubbed is when data scrubbing last finished, left out if never.
+	LastScrubbed   *time.Time `json:"last_scrubbed,omitempty"`
+	ScrubScheduled bool       `json:"scrub_scheduled"`
 }
 
 type volumeReport struct {
@@ -191,6 +195,24 @@ type volumeReport struct {
 	Pool       string  `json:"pool"`
 	UsedBytes  float64 `json:"used_bytes"`
 	TotalBytes float64 `json:"total_bytes"`
+	ioReport
+}
+
+// ioReport is the I/O of a volume or a disk at the moment, left out when
+// DSM does not report it.
+type ioReport struct {
+	ReadBytesPerSec  *float64 `json:"read_bytes_per_sec,omitempty"`
+	WriteBytesPerSec *float64 `json:"write_bytes_per_sec,omitempty"`
+	// BusyPercent is the percent of the time the device was busy.
+	BusyPercent *float64 `json:"busy_percent,omitempty"`
+}
+
+func newIOReport(io dsm.IOStat, ok bool) ioReport {
+	if !ok {
+		return ioReport{}
+	}
+	r, w, b := float64(io.ReadBytes), float64(io.WriteBytes), float64(io.Utilization)
+	return ioReport{ReadBytesPerSec: &r, WriteBytesPerSec: &w, BusyPercent: &b}
 }
 
 type diskReport struct {
@@ -204,6 +226,7 @@ type diskReport struct {
 	LifePercent  *float64 `json:"life_percent,omitempty"`
 	PowerOnHours *float64 `json:"power_on_hours,omitempty"`
 	Pool         string   `json:"pool"`
+	ioReport
 }
 
 func (s *status) report() statusReport {
@@ -220,29 +243,36 @@ func (s *status) report() statusReport {
 		MemoryBytes:   float64(u.Memory.TotalReal) * 1024,
 	}
 	r.Bays = newBayReport(s.st)
-	r.Pools, r.Volumes, r.Disks = storageReports(s.st, s.powerOn)
+	r.Pools, r.Volumes, r.Disks = storageReports(s.st, s.powerOn, s.util)
 	return r
 }
 
 // storageReports turns the storage of status into its JSON.
-func storageReports(st *dsm.Storage, powerOn map[string]float64) ([]poolReport, []volumeReport, []diskReport) {
+func storageReports(st *dsm.Storage, powerOn map[string]float64, u *dsm.Utilization) ([]poolReport, []volumeReport, []diskReport) {
 	pools, volumes, disks := []poolReport{}, []volumeReport{}, []diskReport{}
 	for _, p := range st.StoragePools {
-		pools = append(pools, poolReport{
+		pr := poolReport{
 			Name: poolName(st, p.ID), Status: p.Status, Type: p.DeviceType, Disks: len(p.Disks),
-			UsedBytes: float64(p.Size.Used), TotalBytes: float64(p.Size.Total),
-		})
+			UsedBytes: float64(p.Size.Used), TotalBytes: float64(p.Size.Total), ScrubScheduled: p.IsScheduled,
+		}
+		if p.LastDoneTime > 0 {
+			t := time.Unix(p.LastDoneTime, 0)
+			pr.LastScrubbed = &t
+		}
+		pools = append(pools, pr)
 	}
 	for _, v := range st.Volumes {
 		volumes = append(volumes, volumeReport{
 			Path: v.VolPath, Status: v.Status, Detail: v.SpaceStatus.Detail, FS: v.FSType, Pool: poolName(st, v.PoolPath),
 			UsedBytes: float64(v.Size.Used), TotalBytes: float64(v.Size.Total),
+			ioReport: newIOReport(u.VolumeIO(v.VolPath)),
 		})
 	}
 	for _, d := range st.Disks {
 		dr := diskReport{
 			Name: d.Name, Model: strings.Join(strings.Fields(d.Vendor+" "+d.Model), " "), SizeBytes: float64(d.SizeTotal),
 			Status: d.Status, SMART: d.SmartStatus, TemperatureC: float64(d.Temp), Pool: poolName(st, d.UsedBy),
+			ioReport: newIOReport(u.DiskIO(d.ID)),
 		}
 		if v, ok := d.LifePercent(); ok {
 			dr.LifePercent = &v
@@ -289,27 +319,44 @@ func printBays(w io.Writer, st *dsm.Storage) {
 	fmt.Fprintf(w, "  Drive bays\t%s\n", line)
 }
 
-func printPools(w io.Writer, st *dsm.Storage) {
-	fmt.Fprintln(w, "POOL\tSTATUS\tTYPE\tDISKS\tUSED\tTOTAL\tUSE%")
+func printPools(w io.Writer, st *dsm.Storage, now time.Time) {
+	fmt.Fprintln(w, "POOL\tSTATUS\tTYPE\tDISKS\tUSED\tTOTAL\tUSE%\tSCRUBBED")
 	for _, p := range st.StoragePools {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
-			poolName(st, p.ID), p.Status, p.DeviceType, len(p.Disks),
+		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
+			poolName(st, p.ID), p.Status, dsm.RAIDName(p.DeviceType), len(p.Disks),
 			humanBytes(float64(p.Size.Used)), humanBytes(float64(p.Size.Total)),
-			percent(p.Size.Used, p.Size.Total))
+			percent(p.Size.Used, p.Size.Total), scrubbed(p, now))
 	}
 }
 
-func printVolumes(w io.Writer, st *dsm.Storage) {
-	fmt.Fprintln(w, "VOLUME\tSTATUS\tFS\tPOOL\tUSED\tTOTAL\tUSE%")
+// scrubbed tells when the pool was last scrubbed, like "20d ago", and
+// whether scrubbing has a schedule.
+func scrubbed(p dsm.StoragePool, now time.Time) string {
+	s := "never"
+	if p.LastDoneTime > 0 {
+		s = fmt.Sprintf("%dd ago", int(now.Sub(time.Unix(p.LastDoneTime, 0)).Hours()/24))
+	}
+	if !p.IsScheduled {
+		s += " (no schedule)"
+	}
+	return s
+}
+
+func printVolumes(w io.Writer, st *dsm.Storage, u *dsm.Utilization) {
+	fmt.Fprintln(w, "VOLUME\tSTATUS\tFS\tPOOL\tUSED\tTOTAL\tUSE%\tREAD\tWRITE")
 	for _, v := range st.Volumes {
 		status := v.Status
 		if status != "normal" && v.SpaceStatus.Detail != "" {
 			status += " (" + v.SpaceStatus.Detail + ")"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		read, write := "-", "-"
+		if io, ok := u.VolumeIO(v.VolPath); ok {
+			read, write = humanBytes(float64(io.ReadBytes))+"/s", humanBytes(float64(io.WriteBytes))+"/s"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			v.VolPath, status, v.FSType, poolName(st, v.PoolPath),
 			humanBytes(float64(v.Size.Used)), humanBytes(float64(v.Size.Total)),
-			percent(v.Size.Used, v.Size.Total))
+			percent(v.Size.Used, v.Size.Total), read, write)
 	}
 }
 

@@ -177,3 +177,25 @@ func (s *Storage) Bays() (total int, empty []int, ok bool) {
 func (d Disk) IsM2() bool {
 	return slices.ContainsFunc([]string{d.ID, d.Device}, func(s string) bool { return strings.Contains(s, "nvme") })
 }
+
+// RAIDName turns DSM's device_type of a pool, like "shr_with_1_disk_protect"
+// or "raid_5", into the name Storage Manager shows. Unknown types are
+// returned as they are.
+func RAIDName(deviceType string) string {
+	switch deviceType {
+	case "shr_without_disk_protect":
+		return "SHR (no protection)"
+	case "shr_with_1_disk_protect":
+		return "SHR"
+	case "shr_with_2_disk_protect":
+		return "SHR-2"
+	case "basic":
+		return "Basic"
+	case "raid_linear":
+		return "JBOD"
+	}
+	if level, ok := strings.CutPrefix(deviceType, "raid_"); ok && level != "" {
+		return "RAID " + strings.ToUpper(level)
+	}
+	return deviceType
+}
