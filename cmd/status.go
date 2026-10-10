@@ -241,44 +241,48 @@ func (s *status) report() statusReport {
 		CPUPercent:    float64(u.CPU.UserLoad + u.CPU.SystemLoad + u.CPU.OtherLoad),
 		MemoryPercent: float64(u.Memory.RealUsage),
 		MemoryBytes:   float64(u.Memory.TotalReal) * 1024,
-		Pools:         []poolReport{},
-		Volumes:       []volumeReport{},
-		Disks:         []diskReport{},
 	}
 	r.Bays = newBayReport(s.st)
-	for _, p := range s.st.StoragePools {
+	r.Pools, r.Volumes, r.Disks = storageReports(s.st, s.powerOn, s.util)
+	return r
+}
+
+// storageReports turns the storage of status into its JSON.
+func storageReports(st *dsm.Storage, powerOn map[string]float64, u *dsm.Utilization) ([]poolReport, []volumeReport, []diskReport) {
+	pools, volumes, disks := []poolReport{}, []volumeReport{}, []diskReport{}
+	for _, p := range st.StoragePools {
 		pr := poolReport{
-			Name: poolName(s.st, p.ID), Status: p.Status, Type: p.DeviceType, Disks: len(p.Disks),
+			Name: poolName(st, p.ID), Status: p.Status, Type: p.DeviceType, Disks: len(p.Disks),
 			UsedBytes: float64(p.Size.Used), TotalBytes: float64(p.Size.Total), ScrubScheduled: p.IsScheduled,
 		}
 		if p.LastDoneTime > 0 {
 			t := time.Unix(p.LastDoneTime, 0)
 			pr.LastScrubbed = &t
 		}
-		r.Pools = append(r.Pools, pr)
+		pools = append(pools, pr)
 	}
-	for _, v := range s.st.Volumes {
-		r.Volumes = append(r.Volumes, volumeReport{
-			Path: v.VolPath, Status: v.Status, Detail: v.SpaceStatus.Detail, FS: v.FSType, Pool: poolName(s.st, v.PoolPath),
+	for _, v := range st.Volumes {
+		volumes = append(volumes, volumeReport{
+			Path: v.VolPath, Status: v.Status, Detail: v.SpaceStatus.Detail, FS: v.FSType, Pool: poolName(st, v.PoolPath),
 			UsedBytes: float64(v.Size.Used), TotalBytes: float64(v.Size.Total),
 			ioReport: newIOReport(u.VolumeIO(v.VolPath)),
 		})
 	}
-	for _, d := range s.st.Disks {
+	for _, d := range st.Disks {
 		dr := diskReport{
 			Name: d.Name, Model: strings.Join(strings.Fields(d.Vendor+" "+d.Model), " "), SizeBytes: float64(d.SizeTotal),
-			Status: d.Status, SMART: d.SmartStatus, TemperatureC: float64(d.Temp), Pool: poolName(s.st, d.UsedBy),
+			Status: d.Status, SMART: d.SmartStatus, TemperatureC: float64(d.Temp), Pool: poolName(st, d.UsedBy),
 			ioReport: newIOReport(u.DiskIO(d.ID)),
 		}
 		if v, ok := d.LifePercent(); ok {
 			dr.LifePercent = &v
 		}
-		if h, ok := s.powerOn[d.ID]; ok {
+		if h, ok := powerOn[d.ID]; ok {
 			dr.PowerOnHours = &h
 		}
-		r.Disks = append(r.Disks, dr)
+		disks = append(disks, dr)
 	}
-	return r
+	return pools, volumes, disks
 }
 
 func printSystem(w io.Writer, host string, s *dsm.SystemInfo, u *dsm.Utilization) {

@@ -69,8 +69,12 @@ type IOStat struct {
 	Utilization Num `json:"utilization"`
 }
 
-// VolumeIO returns the I/O of the volume at path, like "/volume1".
+// VolumeIO returns the I/O of the volume at path, like "/volume1". A nil
+// Utilization has none.
 func (u *Utilization) VolumeIO(path string) (IOStat, bool) {
+	if u == nil {
+		return IOStat{}, false
+	}
 	for _, v := range u.Space.Volume {
 		if "/"+v.DisplayName == path {
 			return v, true
@@ -81,6 +85,9 @@ func (u *Utilization) VolumeIO(path string) (IOStat, bool) {
 
 // DiskIO returns the I/O of the disk whose Disk.ID is id, like "sata1".
 func (u *Utilization) DiskIO(id string) (IOStat, bool) {
+	if u == nil {
+		return IOStat{}, false
+	}
 	for _, d := range u.Disk.Disk {
 		if d.Device == id {
 			return d, true

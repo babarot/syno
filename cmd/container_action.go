@@ -115,7 +115,7 @@ func runContainerAction(ctx context.Context, c containerOps, host, action string
 	cs, err := c.Containers(ctx)
 	if err != nil {
 		if dsm.IsNoAPI(err, dsm.ContainerAPI) {
-			return nil, errors.New("the NAS does not have Container Manager installed")
+			return nil, errNoContainerManager
 		}
 		return nil, err
 	}
