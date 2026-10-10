@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.4.0](https://github.com/babarot/syno/compare/0.3.0...v0.4.0) - 2026-10-10
+### New Features
+- Show the life left and power-on hours of disks in status by @babarot in https://github.com/babarot/syno/pull/25
+- Show the drive bays of the NAS in status by @babarot in https://github.com/babarot/syno/pull/28
+- Show scrubbing, I/O and RAID names of storage in status by @babarot in https://github.com/babarot/syno/pull/29
+### Improvements
+- Keep the DSM session open in syno mcp by @babarot in https://github.com/babarot/syno/pull/26
+### Others
+- Set the plugin version to the released 0.3.0 by @babarot in https://github.com/babarot/syno/pull/22
+- Sync shared files from github-config by @babarot in https://github.com/babarot/syno/pull/24
+
 ## [0.3.0](https://github.com/babarot/syno/compare/0.2.0...0.3.0) - 2026-10-09
 ### New Features
 - Add syno share list to see which shared folders use the space by @babarot in https://github.com/babarot/syno/pull/14
