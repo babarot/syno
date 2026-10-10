@@ -405,3 +405,39 @@ func TestThresholdsValidate(t *testing.T) {
 		t.Errorf("err = %v, want both problems", err)
 	}
 }
+
+// scrubbingStorage is healthyStorage with data scrubbing running, as DSM
+// reports it: the pool's status gives way to the scrubbing.
+func scrubbingStorage(lastDone time.Time, scheduled bool) *dsm.Storage {
+	st := healthyStorage()
+	p := &st.StoragePools[0]
+	p.Status, p.SummaryStatus = dsm.StatusScrubbing, dsm.StatusScrubbing
+	p.SpaceStatus.Status = dsm.StatusScrubbing
+	p.ScrubbingStatus = "manual_running"
+	p.Progress.Step, p.Progress.Percent = "waiting", 0.3
+	p.LastDoneTime, p.IsScheduled = lastDone.Unix(), scheduled
+	return st
+}
+
+func TestScrubbingRuns(t *testing.T) {
+	results := run(scrubbingStorage(now.Add(-733*24*time.Hour), true), nil)
+	if r := results["pools"]; r.Level != OK || r.Summary != "1 pool healthy, Pool 1 is being scrubbed (0.30%)" {
+		t.Errorf("pools: got %s %q", r.Level, r.Summary)
+	}
+	// A long time since the last one does not matter while one runs.
+	if r := results["scrubbing"]; r.Level != OK || r.Summary != "Pool 1 is being scrubbed now (0.30%)" {
+		t.Errorf("scrubbing: got %s %q", r.Level, r.Summary)
+	}
+
+	r := run(scrubbingStorage(now.Add(-733*24*time.Hour), false), nil)["scrubbing"]
+	if r.Level != Warn || r.Summary != "Pool 1 has no scrubbing schedule" || len(r.Details) != 1 || r.Details[0] != "Pool 1 is being scrubbed now (0.30%)" {
+		t.Errorf("without a schedule: got %s %q %v", r.Level, r.Summary, r.Details)
+	}
+
+	// A failed disk still fails while scrubbing.
+	st := scrubbingStorage(now, true)
+	st.StoragePools[0].DiskFailureNumber = 1
+	if r := run(st, nil)["pools"]; r.Level != Fail {
+		t.Errorf("failed disk while scrubbing: got %s %q", r.Level, r.Summary)
+	}
+}

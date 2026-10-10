@@ -94,7 +94,7 @@ Every command that logs in uses the profile given by `--profile` (`-p`), then `S
 
 ### status
 
-Shows the system, CPU and memory usage, storage pools, volumes and disks. `Drive bays` counts the bays of the NAS itself, without M.2 slots and expansion units, and names the empty ones. `SCRUBBED` is when data scrubbing last finished on the pool, and says so when it has no schedule. `READ` and `WRITE` are what the volume reads and writes per second at the moment, which DSM measures every few seconds; `--json` also has how busy each volume and disk is. For each disk, `LIFE` is the life left that DSM estimates, which it does for most SSDs and not for HDDs, and `POWER-ON` is how long the disk has run, from SMART. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
+Shows the system, CPU and memory usage, storage pools, volumes and disks. `Drive bays` counts the bays of the NAS itself, without M.2 slots and expansion units, and names the empty ones. `SCRUBBED` is when data scrubbing last finished on the pool, and says so when it has no schedule; while one runs, `STATUS` shows how far it has got. `READ` and `WRITE` are what the volume reads and writes per second at the moment, which DSM measures every few seconds; `--json` also has how busy each volume and disk is. For each disk, `LIFE` is the life left that DSM estimates, which it does for most SSDs and not for HDDs, and `POWER-ON` is how long the disk has run, from SMART. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
 
 ```console
 $ syno status
@@ -126,11 +126,11 @@ Runs health checks and reports each as ok, warn, fail, unknown or skip. `syno do
 
 | Check | What it looks at |
 |-------|------------------|
-| `pools` | Failed or missing disks, and DSM's status of each storage pool |
+| `pools` | Failed or missing disks, and DSM's status of each storage pool; a running data scrubbing is not a problem |
 | `volumes` | Usage against the thresholds, and DSM's status of each volume |
 | `disks` | Disk status, SMART, the remaining life DSM estimates and uncorrectable sectors |
 | `disk-temperature` | Disk temperatures against the thresholds |
-| `scrubbing` | Whether data scrubbing is scheduled and when it last ran |
+| `scrubbing` | Whether data scrubbing is scheduled and when it last ran, or how far a running one has got |
 | `system-temperature` | DSM's own temperature warning |
 | `reboot` | A reboot pending to finish an update |
 | `dsm-update` | A newer DSM (the NAS asks Synology's update server) |

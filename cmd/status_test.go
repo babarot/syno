@@ -204,3 +204,24 @@ func TestStatusReportIO(t *testing.T) {
 		t.Errorf("volume2 row = %q", lines[2])
 	}
 }
+
+func TestPrintPoolsScrubbing(t *testing.T) {
+	var st dsm.Storage
+	if err := json.Unmarshal([]byte(`{"storagePools": [{"id": "reuse_1", "num_id": 1, "status": "background_scrubbing",
+		"scrubbingStatus": "manual_running", "progress": {"percent": "42.25"}, "is_scheduled": true}]}`), &st); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	w := tabwriter.NewWriter(&out, 0, 0, 3, ' ', 0)
+	printPools(w, &st, time.Now())
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "scrubbing 42.2%") {
+		t.Errorf("got %q", out.String())
+	}
+	r := (&status{sys: &dsm.SystemInfo{}, util: &dsm.Utilization{}, st: &st}).report()
+	if p := r.Pools[0].ScrubPercent; p == nil || *p != 42.25 {
+		t.Errorf("scrub_percent = %v", p)
+	}
+}

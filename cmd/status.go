@@ -185,6 +185,8 @@ type poolReport struct {
 	// LastScrubbed is when data scrubbing last finished, left out if never.
 	LastScrubbed   *time.Time `json:"last_scrubbed,omitempty"`
 	ScrubScheduled bool       `json:"scrub_scheduled"`
+	// ScrubPercent is how far data scrubbing has got while it runs.
+	ScrubPercent *float64 `json:"scrub_percent,omitempty"`
 }
 
 type volumeReport struct {
@@ -259,6 +261,9 @@ func storageReports(st *dsm.Storage, powerOn map[string]float64, u *dsm.Utilizat
 			t := time.Unix(p.LastDoneTime, 0)
 			pr.LastScrubbed = &t
 		}
+		if pct, ok := p.Scrubbing(); ok {
+			pr.ScrubPercent = &pct
+		}
 		pools = append(pools, pr)
 	}
 	for _, v := range st.Volumes {
@@ -322,8 +327,12 @@ func printBays(w io.Writer, st *dsm.Storage) {
 func printPools(w io.Writer, st *dsm.Storage, now time.Time) {
 	fmt.Fprintln(w, "POOL\tSTATUS\tTYPE\tDISKS\tUSED\tTOTAL\tUSE%\tSCRUBBED")
 	for _, p := range st.StoragePools {
+		status := p.Status
+		if pct, ok := p.Scrubbing(); ok && status == dsm.StatusScrubbing {
+			status = fmt.Sprintf("scrubbing %.1f%%", pct)
+		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
-			poolName(st, p.ID), p.Status, dsm.RAIDName(p.DeviceType), len(p.Disks),
+			poolName(st, p.ID), status, dsm.RAIDName(p.DeviceType), len(p.Disks),
 			humanBytes(float64(p.Size.Used)), humanBytes(float64(p.Size.Total)),
 			percent(p.Size.Used, p.Size.Total), scrubbed(p, now))
 	}
