@@ -80,6 +80,22 @@ When the account uses 2FA, syno asks for a code once and saves the device token 
 
 Commands share one DSM session per profile instead of logging in each time, which saves about a third of a second per command. When DSM no longer accepts the session, the next command logs in again with the saved password. `syno logout` ends the session; the password stays saved.
 
+A profile keeps the address it was logged in with, so an IP address handed out by DHCP can go stale. When the NAS answers mDNS (`syno discover` shows `mdns` under SOURCE), log in with its name instead, which is the NAME column with `.local` added. Give the existing profile name to update that profile; syno asks once more about the certificate, since the URL is new.
+
+```bash
+syno login --host https://nas.local:5001 --profile home
+```
+
+The same name works for ssh, scp and rsync with an entry in `~/.ssh/config`:
+
+```
+Host nas
+  HostName nas.local
+  User admin
+```
+
+The Linux release binaries cannot resolve `.local` names. On Linux, use a name from your local DNS or DDNS, or reserve the address in the router's DHCP settings.
+
 ### profile
 
 ```bash
