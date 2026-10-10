@@ -303,7 +303,16 @@ function drawUpdates(d) {
     <div><div><span class="dot bg-fail"></span> ${sec} security</div><div><span class="dot bg-warn"></span> ${outdated.length - sec} other</div><div><span class="dot bg-ok"></span> ${current} up to date</div></div>`;
   const dsm = d.checks.find(c => c.check === "dsm-update");
   $("dsm-update").innerHTML = dsm ? `<span class="c-${dsm.level === "unknown" ? "muted" : dsm.level}">${esc(dsm.summary)}</span>` : "";
-  $("pkgs").innerHTML = outdated.map(p => `<div class="pkg"><span>${esc(p.name)} ${p.security ? `<span class="tag c-fail">security</span>` : ""}</span><span></span><span class="ver">${esc(p.version)} <span class="arrow">→</span> ${esc(p.latest)}</span></div>`).join("");
+  // Security updates first, so a scrolled list does not hide them.
+  const order = [...outdated].sort((a, b) => (b.security ? 1 : 0) - (a.security ? 1 : 0));
+  $("pkgs").innerHTML = order.map(p => `<div class="pkg"><span>${esc(p.name)} ${p.security ? `<span class="tag c-fail">security</span>` : ""}</span><span></span><span class="ver">${esc(p.version)} <span class="arrow">→</span> ${esc(p.latest)}</span></div>`).join("");
+  fadePkgs();
+}
+
+// The list fades at its bottom while more of it lies below.
+function fadePkgs() {
+  const l = $("pkgs");
+  l.classList.toggle("more", l.scrollHeight - l.scrollTop - l.clientHeight > 1);
 }
 
 function drawContainers(d) {
@@ -464,6 +473,8 @@ async function start() {
   schedule();
   setInterval(drawAges, 1000);
   // Catch up at once when the tab comes back, rather than at the next tick.
+  $("pkgs").addEventListener("scroll", fadePkgs);
+  new ResizeObserver(fadePkgs).observe($("pkgs"));
   document.addEventListener("visibilitychange", () => { if (!document.hidden) schedule(); });
 }
 
