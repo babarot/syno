@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"slices"
+	"strings"
 )
 
 // Storage is SYNO.Storage.CGI.Storage load_info. It needs an administrator.
@@ -11,6 +13,11 @@ type Storage struct {
 	Disks        []Disk        `json:"disks"`
 	StoragePools []StoragePool `json:"storagePools"`
 	Volumes      []Volume      `json:"volumes"`
+	Env          struct {
+		// BayNumber is the number of drive bays of the NAS itself, without
+		// M.2 slots and expansion units.
+		BayNumber Num `json:"bay_number"`
+	} `json:"env"`
 }
 
 // Summary statuses DSM puts on pools and volumes. Unknown values are
@@ -37,6 +44,12 @@ type Disk struct {
 	Temp        Num    `json:"temp"`
 	SizeTotal   Num    `json:"size_total"` // bytes
 	UsedBy      string `json:"used_by"`
+	// SlotID is the bay the disk is in, counted from 1 in its enclosure.
+	SlotID    int `json:"slot_id"`
+	Container struct {
+		// Type is "internal" for the NAS itself, and else an expansion unit.
+		Type string `json:"type"`
+	} `json:"container"`
 	// Unc is the number of uncorrectable sectors.
 	Unc Num `json:"unc"`
 	// RemainLife is the life left in percent that DSM estimates, mostly for
@@ -135,4 +148,32 @@ func (c *Client) DiskHealth(ctx context.Context, device string) (*DiskHealth, er
 		return nil, err
 	}
 	return &out.HealthInfo.Overview, nil
+}
+
+// Bays tells how many drive bays the NAS itself has and which of them are
+// empty. ok is false when DSM does not say how many it has. M.2 SSDs and the
+// disks of expansion units are not in the bays.
+func (s *Storage) Bays() (total int, empty []int, ok bool) {
+	total = int(s.Env.BayNumber)
+	if total <= 0 {
+		return 0, nil, false
+	}
+	used := map[int]bool{}
+	for _, d := range s.Disks {
+		if d.Container.Type == "internal" && !d.IsM2() {
+			used[d.SlotID] = true
+		}
+	}
+	for slot := 1; slot <= total; slot++ {
+		if !used[slot] {
+			empty = append(empty, slot)
+		}
+	}
+	return total, empty, true
+}
+
+// IsM2 reports whether the disk is an NVMe SSD in an M.2 slot, which DSM
+// names like "nvme0n1".
+func (d Disk) IsM2() bool {
+	return slices.ContainsFunc([]string{d.ID, d.Device}, func(s string) bool { return strings.Contains(s, "nvme") })
 }

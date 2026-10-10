@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -50,5 +51,29 @@ func TestDiskHealth(t *testing.T) {
 	}
 	if h.PowerOnHours != 23219 {
 		t.Errorf("power-on hours = %v, want 23219", h.PowerOnHours)
+	}
+}
+
+func TestBays(t *testing.T) {
+	var st Storage
+	if err := json.Unmarshal([]byte(`{
+		"env": {"bay_number": "4"},
+		"disks": [
+			{"id": "sata1", "device": "/dev/sata1", "slot_id": 1, "container": {"type": "internal"}},
+			{"id": "sata3", "device": "/dev/sata3", "slot_id": 3, "container": {"type": "internal"}},
+			{"id": "nvme0n1", "device": "/dev/nvme0n1", "slot_id": 2, "container": {"type": "internal"}},
+			{"id": "sata5", "device": "/dev/sata5", "slot_id": 4, "container": {"type": "ebox"}}
+		]}`), &st); err != nil {
+		t.Fatal(err)
+	}
+	// The M.2 SSD and the disk of the expansion unit do not fill bays 2
+	// and 4 of the NAS.
+	total, empty, ok := st.Bays()
+	if !ok || total != 4 || !slices.Equal(empty, []int{2, 4}) {
+		t.Errorf("Bays() = %d, %v, %v, want 4, [2 4], true", total, empty, ok)
+	}
+
+	if _, _, ok := (&Storage{}).Bays(); ok {
+		t.Error("a DSM that does not send bay_number has bays")
 	}
 }
