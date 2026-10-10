@@ -1,11 +1,13 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -232,5 +234,21 @@ func TestPanelSharesFetches(t *testing.T) {
 	wg.Wait()
 	if n := f.calls.Load(); n != 1 {
 		t.Errorf("fetched %d times for requests that arrived together, want 1", n)
+	}
+}
+
+// The page shows the logo of the README, copied since go:embed cannot
+// reach docs/.
+func TestLogoMatchesREADME(t *testing.T) {
+	want, err := os.ReadFile("../../docs/logo.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := web.ReadFile("web/logo.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Error("internal/dashboard/web/logo.svg differs from docs/logo.svg: copy it again")
 	}
 }
