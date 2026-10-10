@@ -93,7 +93,7 @@ Every command that logs in uses the profile given by `--profile` (`-p`), then `S
 
 ### status
 
-Shows the system, CPU and memory usage, storage pools, volumes and disks. For each disk, `LIFE` is the life left that DSM estimates, which it does for most SSDs and not for HDDs, and `POWER-ON` is how long the disk has run, from SMART. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
+Shows the system, CPU and memory usage, storage pools, volumes and disks. `Drive bays` counts the bays of the NAS itself, without M.2 slots and expansion units, and names the empty ones. For each disk, `LIFE` is the life left that DSM estimates, which it does for most SSDs and not for HDDs, and `POWER-ON` is how long the disk has run, from SMART. `--json` prints the same as JSON with sizes in bytes, and `--raw` prints the API responses as they are.
 
 ```console
 $ syno status
@@ -106,6 +106,7 @@ SYSTEM
   Temperature   52°C
   CPU           4%
   Memory        21% of 3.8 GB
+  Drive bays    4 of 4 used
 
 POOL     STATUS   TYPE                      DISKS   USED      TOTAL     USE%
 Pool 1   normal   shr_with_1_disk_protect   4       19.1 TB   21.8 TB   88%
