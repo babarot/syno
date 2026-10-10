@@ -47,6 +47,46 @@ type Utilization struct {
 		RX     Num    `json:"rx"` // bytes/s
 		TX     Num    `json:"tx"` // bytes/s
 	} `json:"network"`
+	// Space has the I/O of each volume, and Disk that of each disk. DSM
+	// refreshes them every few seconds.
+	Space struct {
+		Volume []IOStat `json:"volume"`
+	} `json:"space"`
+	Disk struct {
+		Disk []IOStat `json:"disk"`
+	} `json:"disk"`
+}
+
+// IOStat is the I/O of a volume or a disk.
+type IOStat struct {
+	// Device is like "sata1" for a disk, and like "dm-1" for a volume.
+	Device string `json:"device"`
+	// DisplayName is like "Drive 1", or "volume1" for /volume1.
+	DisplayName string `json:"display_name"`
+	ReadBytes   Num    `json:"read_byte"`  // bytes/s
+	WriteBytes  Num    `json:"write_byte"` // bytes/s
+	// Utilization is the percent of the time the device was busy.
+	Utilization Num `json:"utilization"`
+}
+
+// VolumeIO returns the I/O of the volume at path, like "/volume1".
+func (u *Utilization) VolumeIO(path string) (IOStat, bool) {
+	for _, v := range u.Space.Volume {
+		if "/"+v.DisplayName == path {
+			return v, true
+		}
+	}
+	return IOStat{}, false
+}
+
+// DiskIO returns the I/O of the disk whose Disk.ID is id, like "sata1".
+func (u *Utilization) DiskIO(id string) (IOStat, bool) {
+	for _, d := range u.Disk.Disk {
+		if d.Device == id {
+			return d, true
+		}
+	}
+	return IOStat{}, false
 }
 
 func (c *Client) Utilization(ctx context.Context) (*Utilization, error) {
