@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.5.1](https://github.com/babarot/syno/compare/v0.5.0...v0.5.1) - 2026-10-10
+### Improvements
+- Scroll the update list within the dashboard's updates panel by @babarot in https://github.com/babarot/syno/pull/35
+
 ## [v0.5.0](https://github.com/babarot/syno/compare/v0.4.0...v0.5.0) - 2026-10-10
 ### New Features
 - Add syno dashboard, a web page of the NAS on localhost by @babarot in https://github.com/babarot/syno/pull/27
