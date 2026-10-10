@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -250,5 +251,32 @@ func TestLogoMatchesREADME(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Error("internal/dashboard/web/logo.svg differs from docs/logo.svg: copy it again")
+	}
+}
+
+// The favicon is the "s" of the logo: the dots of its first letter.
+func TestFaviconIsTheLogosS(t *testing.T) {
+	logo, err := os.ReadFile("../../docs/logo.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	icon, err := web.ReadFile("web/favicon.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for line := range strings.SplitSeq(string(logo), "\n") {
+		var x, y int
+		if _, err := fmt.Sscanf(strings.TrimSpace(line), `<use href="#d" x="%d" y="%d"/>`, &x, &y); err == nil && x <= 102 {
+			want = append(want, line)
+		}
+	}
+	for _, line := range want {
+		if !strings.Contains(string(icon), line) {
+			t.Errorf("favicon.svg lacks the dot %s of the logo's s: cut it out of docs/logo.svg again", strings.TrimSpace(line))
+		}
+	}
+	if n := strings.Count(string(icon), "<use "); n != len(want) {
+		t.Errorf("favicon.svg has %d dots, the logo's s has %d", n, len(want))
 	}
 }
