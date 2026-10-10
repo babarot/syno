@@ -16,6 +16,7 @@ const state = {
   cur: "",
   data: {},      // "profile/panel" -> the server's answer
   hist: { cpu: [], mem: [] },
+  io: {},        // volume path -> { read: [], write: [] }, like hist
   timers: [],
 };
 
@@ -130,6 +131,40 @@ function bayOrder(d) {
   return out.concat(d.disks.filter(x => !x.bay || x.bay > d.bays.total));
 }
 
+// drawPool tells the state of the pool a volume is on, and when it was
+// last scrubbed.
+function drawPool(p, th) {
+  const days = p.last_scrubbed ? (Date.now() - Date.parse(p.last_scrubbed)) / 86400000 : null;
+  const scrubLate = days == null || days > th.scrub_age_days || !p.scrub_scheduled;
+  const scrub = days == null ? "never scrubbed" : `scrubbed ${Math.floor(days)} days ago`;
+  return `<div class="pool"><h4>${esc(p.name)}</h4>
+    <dl class="kvs">
+      <dt>Status</dt><dd class="${p.status === "normal" ? "" : "c-fail"}">${esc(p.status)}</dd>
+      <dt>RAID</dt><dd>${esc(p.raid)} · ${p.disks} ${p.disks === 1 ? "disk" : "disks"}</dd>
+      <dt>Size</dt><dd>${hb(p.used_bytes)} of ${hb(p.total_bytes)}</dd>
+      <dt>Scrubbing</dt><dd class="${scrubLate ? "c-warn" : ""}">${scrub}${p.scrub_scheduled ? "" : ", no schedule"}</dd>
+    </dl></div>`;
+}
+
+// drawIO draws what each volume read and wrote over the last 2 minutes,
+// collected from the system panel while the page is open.
+function drawIO() {
+  document.querySelectorAll(".volio").forEach(el => {
+    const h = state.io[el.dataset.vol], last = get(state.cur, "system")?.data?.volumes?.find(v => v.path === el.dataset.vol);
+    if (!h || !last) { el.innerHTML = `<h4>I/O</h4><div class="empty">Waiting for the first sample.</div>`; return; }
+    const max = Math.max(...h.read, ...h.write, 1024);
+    const line = (data, color) => {
+      if (data.length < 2) return "";
+      const step = 300 / (HISTORY - 1), pts = data.map((v, i) => [(i + HISTORY - data.length) * step, 60 - v / max * 56]);
+      const ps = pts.map(p => p.join(",")).join(" ");
+      return `<polygon points="${pts[0][0]},60 ${ps} ${pts[pts.length - 1][0]},60" fill="${color}" opacity=".15"/><polyline points="${ps}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+    };
+    el.innerHTML = `<h4>I/O <span class="c-muted">busy ${last.busy_percent.toFixed(0)}%</span></h4>
+      <svg class="area" viewBox="0 0 300 60" preserveAspectRatio="none">${line(h.write, "var(--accent2)") + line(h.read, "var(--accent)")}</svg>
+      <div class="legend"><span><i class="sw cpu"></i>read ${hb(last.read_bytes_per_sec)}/s</span><span><i class="sw mem"></i>write ${hb(last.write_bytes_per_sec)}/s</span><span class="c-muted">peak ${hb(max)}/s · last 2 minutes</span></div>`;
+  });
+}
+
 // recycleOn sums the recycle bins of the shares on a volume, or returns null
 // before they are summed.
 function recycleOn(recycle, volume) {
@@ -146,13 +181,15 @@ function drawStorage(d, recycle) {
     const bin = Math.min(recycleOn(recycle, v.path) ?? 0, v.used_bytes), data = v.used_bytes - bin;
     const after = v.total_bytes ? data / v.total_bytes * 100 : 0;
     return `<div class="vol">${ring(pct, 100, 140, 14, color, `${pct.toFixed(0)}%`, "used")}
-      <div><h3>${esc(v.path)} <span class="tag">${esc(v.fs)}</span> <span class="tag">${esc(v.pool)}</span>${pool ? ` <span class="tag">${esc(pool.type)}</span>` : ""}${v.status !== "normal" ? ` <span class="tag c-fail">${esc(v.status)}${v.detail ? ": " + esc(v.detail) : ""}</span>` : ""}</h3>
+      <div><h3>${esc(v.path)} <span class="tag">${esc(v.fs)}</span> <span class="tag">${esc(v.pool)}</span>${pool ? ` <span class="tag">${esc(pool.raid)}</span>` : ""}${v.status !== "normal" ? ` <span class="tag c-fail">${esc(v.status)}${v.detail ? ": " + esc(v.detail) : ""}</span>` : ""}</h3>
       <div style="margin-top:6px"><span class="free" style="color:${color}">${hb(free)}</span> <span class="c-muted">free of ${hb(v.total_bytes)}</span></div>
       <div class="stackbar"><i style="width:${data / v.total_bytes * 100}%;background:${color}"></i><i style="width:${bin / v.total_bytes * 100}%;background:var(--warn);opacity:.7"></i></div>
       <div class="legend"><span><i class="sw" style="background:${color}"></i>data ${hb(data)}</span>${bin ? `<span><i class="sw recycle"></i>recycle bins ${hb(bin)}</span>` : ""}<span><i class="sw free"></i>free ${hb(free)}</span>
       <span class="c-muted">· warn at ${th.volume_warn}%, fail at ${th.volume_fail}%</span></div>
-      ${pct >= th.volume_warn && pct - after >= 1 ? `<div class="note">Emptying the recycle bins would bring it to ${after.toFixed(1)}%.</div>` : ""}</div></div>`;
+      ${pct >= th.volume_warn && pct - after >= 1 ? `<div class="note">Emptying the recycle bins would bring it to ${after.toFixed(1)}%.</div>` : ""}</div></div>
+      <div class="volmore">${pool ? drawPool(pool, th) : ""}<div class="volio" data-vol="${esc(v.path)}"></div></div>`;
   }).join("") : `<div class="empty">No volumes.</div>`;
+  drawIO();
 
   $("bays").innerHTML = d.disks.length || d.bays ? bayOrder(d).map(x => {
     if (x.empty) {
@@ -280,7 +317,7 @@ function render(panel) {
   const data = name => get(p, name)?.data;
   switch (panel) {
     case "doctor": drawHealth(e.data, data("updates")); break;
-    case "system": case "info": drawSystem(data("system"), data("info")); break;
+    case "system": case "info": drawSystem(data("system"), data("info")); drawIO(); break;
     case "storage": drawStorage(e.data, data("recycle")); break;
     case "containers": drawContainers(e.data); break;
     case "shares": drawShares(e.data, data("recycle")); break;
@@ -329,6 +366,11 @@ async function poll(profile, panel, refresh = false) {
       const h = state.hist;
       h.cpu.push(e.data.cpu_percent); h.mem.push(e.data.memory_percent);
       if (h.cpu.length > HISTORY) { h.cpu.shift(); h.mem.shift(); }
+      for (const v of e.data.volumes || []) {
+        const io = state.io[v.path] ||= { read: [], write: [] };
+        io.read.push(v.read_bytes_per_sec); io.write.push(v.write_bytes_per_sec);
+        if (io.read.length > HISTORY) { io.read.shift(); io.write.shift(); }
+      }
     }
   } catch (err) {
     const old = state.data[`${profile}/${panel}`] || {};
@@ -355,6 +397,7 @@ function select(profile) {
   if (profile === state.cur) return;
   state.cur = profile;
   state.hist = { cpu: [], mem: [] };
+  state.io = {};
   store("syno.profile", profile);
   $("host").textContent = get(profile, "info")?.data?.host || "";
   for (const panel of Object.keys(state.intervals)) render(panel);

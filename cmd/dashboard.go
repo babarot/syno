@@ -200,13 +200,26 @@ type (
 		CPUPercent    float64 `json:"cpu_percent"`
 		MemoryPercent float64 `json:"memory_percent"`
 		MemoryBytes   float64 `json:"memory_bytes"`
+		// Volumes is the I/O of each volume, which the storage panel draws.
+		Volumes []volumeIO `json:"volumes"`
+	}
+	volumeIO struct {
+		Path             string  `json:"path"`
+		ReadBytesPerSec  float64 `json:"read_bytes_per_sec"`
+		WriteBytesPerSec float64 `json:"write_bytes_per_sec"`
+		BusyPercent      float64 `json:"busy_percent"`
 	}
 	storagePanel struct {
-		Pools      []poolReport    `json:"pools"`
+		Pools      []dashboardPool `json:"pools"`
 		Volumes    []volumeReport  `json:"volumes"`
 		Disks      []dashboardDisk `json:"disks"`
 		Bays       *bayReport      `json:"bays,omitempty"`
 		Thresholds panelThresholds `json:"thresholds"`
+	}
+	// dashboardPool adds the name Storage Manager gives the RAID type.
+	dashboardPool struct {
+		poolReport
+		RAID string `json:"raid"`
 	}
 	// dashboardDisk adds what the disk cards show to the disk of status.
 	dashboardDisk struct {
@@ -219,6 +232,7 @@ type (
 	}
 	// panelThresholds are the doctor thresholds the page colors with.
 	panelThresholds struct {
+		ScrubAgeDays float64 `json:"scrub_age_days"`
 		VolumeWarn   float64 `json:"volume_warn"`
 		VolumeFail   float64 `json:"volume_fail"`
 		DiskTempWarn float64 `json:"disk_temp_warn"`
@@ -270,11 +284,19 @@ func readPanel(ctx context.Context, c *dsm.Client, panel string, cfg panelConfig
 		if err != nil {
 			return nil, err
 		}
-		return systemPanel{
+		out := systemPanel{
 			CPUPercent:    float64(u.CPU.UserLoad + u.CPU.SystemLoad + u.CPU.OtherLoad),
 			MemoryPercent: float64(u.Memory.RealUsage),
 			MemoryBytes:   float64(u.Memory.TotalReal) * 1024,
-		}, nil
+			Volumes:       make([]volumeIO, 0, len(u.Space.Volume)),
+		}
+		for _, v := range u.Space.Volume {
+			out.Volumes = append(out.Volumes, volumeIO{
+				Path: "/" + v.DisplayName, ReadBytesPerSec: float64(v.ReadBytes),
+				WriteBytesPerSec: float64(v.WriteBytes), BusyPercent: float64(v.Utilization),
+			})
+		}
+		return out, nil
 
 	case "info":
 		s, err := c.SystemInfo(ctx)
@@ -294,8 +316,11 @@ func readPanel(ctx context.Context, c *dsm.Client, panel string, cfg panelConfig
 		// The I/O comes with the system panel, which is refreshed more often.
 		pools, volumes, disks := storageReports(st, powerOnHours(ctx, c, st.Disks), nil)
 		out := storagePanel{
-			Pools: pools, Volumes: volumes, Disks: make([]dashboardDisk, len(disks)), Bays: newBayReport(st),
-			Thresholds: panelThresholds{th.VolumeUsageWarn, th.VolumeUsageFail, th.DiskTempWarn, th.DiskTempFail},
+			Pools: make([]dashboardPool, len(pools)), Volumes: volumes, Disks: make([]dashboardDisk, len(disks)), Bays: newBayReport(st),
+			Thresholds: panelThresholds{th.ScrubAgeWarn.Hours() / 24, th.VolumeUsageWarn, th.VolumeUsageFail, th.DiskTempWarn, th.DiskTempFail},
+		}
+		for i, p := range pools {
+			out.Pools[i] = dashboardPool{poolReport: p, RAID: dsm.RAIDName(p.Type)}
 		}
 		for i, d := range disks {
 			sd := st.Disks[i]

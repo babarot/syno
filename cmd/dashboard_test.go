@@ -30,6 +30,10 @@ func panelNAS(t *testing.T) *dsm.Client {
 					{"id":"sata1","name":"Drive 1","device":"/dev/sata1","slot_id":1,"container":{"type":"internal"},"isSsd":false,"status":"normal","smart_status":"normal","temp":37,"unc":2,"used_by":"reuse_1","remain_life":{"value":-1}},
 					{"id":"nvme0n1","name":"M.2 Drive 1","device":"/dev/nvme0n1","slot_id":1,"container":{"type":"internal"},"isSsd":true,"status":"normal","smart_status":"normal","temp":44,"unc":0,"used_by":"reuse_1","remain_life":{"value":87}}
 				]}}`)
+		case "SYNO.Core.System.Utilization":
+			fmt.Fprint(w, `{"success":true,"data":{
+				"cpu":{"user_load":3,"system_load":1,"other_load":0},"memory":{"real_usage":27,"total_real":4000000},
+				"space":{"volume":[{"device":"dm-1","display_name":"volume1","read_byte":1024,"write_byte":2048,"utilization":9}]}}}`)
 		case "SYNO.Storage.CGI.Smart":
 			fmt.Fprint(w, `{"success":true,"data":{"healthInfo":{"overview":{"poweron":"9100"}}}}`)
 		default:
@@ -52,6 +56,9 @@ func TestReadPanelStorage(t *testing.T) {
 	}
 	if len(st.Disks) != 2 || len(st.Volumes) != 1 || len(st.Pools) != 1 {
 		t.Fatalf("got %+v", st)
+	}
+	if p := st.Pools[0]; p.RAID != "SHR" || p.Type != "shr_with_1_disk_protect" {
+		t.Errorf("pool = %+v", p)
 	}
 	hdd, ssd := st.Disks[0], st.Disks[1]
 	if hdd.Type != "HDD" || hdd.Bay != 1 || hdd.BadSectors != 2 || hdd.LifePercent != nil || hdd.Pool != "Pool 1" {
@@ -92,5 +99,23 @@ func TestNewPanelConfig(t *testing.T) {
 	cfg = newPanelConfig(doctor.Options{Skip: []string{"dsm-update"}})
 	if !slices.Equal(cfg.updates.Only, []string{"package-update"}) || !slices.Equal(cfg.hidden, []string{"package-update"}) {
 		t.Errorf("updates runs %v, hides %v", cfg.updates.Only, cfg.hidden)
+	}
+}
+
+func TestReadPanelSystem(t *testing.T) {
+	out, err := readPanel(context.Background(), panelNAS(t), "system", newPanelConfig(doctor.Options{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys, ok := out.(systemPanel)
+	if !ok {
+		t.Fatalf("got %T", out)
+	}
+	if sys.CPUPercent != 4 || sys.MemoryPercent != 27 {
+		t.Errorf("got %+v", sys)
+	}
+	want := []volumeIO{{Path: "/volume1", ReadBytesPerSec: 1024, WriteBytesPerSec: 2048, BusyPercent: 9}}
+	if !slices.Equal(sys.Volumes, want) {
+		t.Errorf("volumes = %+v, want %+v", sys.Volumes, want)
 	}
 }

@@ -146,3 +146,9 @@ footer code { font-family: var(--mono); }
 .bay.empty { background: transparent; border: 2px dashed var(--border); display: grid; align-content: center; justify-items: center; min-height: 150px; color: var(--muted); }
 .bay.empty .model { font-family: inherit; font-size: 12px; }
 .ph #bay-count { font-size: 12px; }
+.volmore { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 18px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); }
+@media (max-width: 720px) { .volmore { grid-template-columns: 1fr; } }
+.volmore h4 { margin: 0 0 6px; font-size: 12px; font-family: var(--mono); font-weight: 650; }
+.volmore h4 .c-muted { font-weight: 400; margin-left: 6px; }
+.volmore .kvs { margin-top: 0; }
+.volio svg.area { height: 60px; }
