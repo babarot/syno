@@ -49,7 +49,7 @@ func TestDiskHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.PowerOnHours != 23219 {
+	if h.PowerOnHours == nil || *h.PowerOnHours != 23219 {
 		t.Errorf("power-on hours = %v, want 23219", h.PowerOnHours)
 	}
 }

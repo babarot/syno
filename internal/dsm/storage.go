@@ -150,7 +150,8 @@ func (d Disk) LifePercent() (float64, bool) {
 // DiskHealth is the part of SYNO.Storage.CGI.Smart get_health_info that
 // load_info lacks.
 type DiskHealth struct {
-	PowerOnHours Num `json:"poweron"`
+	// PowerOnHours is nil when DSM leaves it out. A new disk has 0.
+	PowerOnHours *Num `json:"poweron"`
 }
 
 // DiskHealth reads the SMART overview of one disk. device is Disk.Device,
