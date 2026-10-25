@@ -209,6 +209,30 @@ func (d Disk) LifePercent() (float64, bool) {
 type DiskHealth struct {
 	// PowerOnHours is nil when DSM leaves it out. A new disk has 0.
 	PowerOnHours *Num `json:"poweron"`
+	// Compatibility is "support" when the disk is on Synology's
+	// compatibility list for the model, and "not_in_support" when it is not.
+	Compatibility string `json:"compatibility"`
+}
+
+// Hours returns the power-on hours, and false when DSM does not report
+// them.
+func (h DiskHealth) Hours() (float64, bool) {
+	if h.PowerOnHours == nil || *h.PowerOnHours < 0 {
+		return 0, false
+	}
+	return float64(*h.PowerOnHours), true
+}
+
+// Listed tells whether the disk is on Synology's compatibility list for
+// the model, and false for known when DSM does not say.
+func (h DiskHealth) Listed() (listed, known bool) {
+	switch h.Compatibility {
+	case "support":
+		return true, true
+	case "not_in_support":
+		return false, true
+	}
+	return false, false
 }
 
 // DiskHealth reads the SMART overview of one disk. device is Disk.Device,

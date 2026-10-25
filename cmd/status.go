@@ -56,7 +56,7 @@ func newStatusCmd() *cobra.Command {
 			fmt.Fprintln(w)
 			printVolumes(w, s.st, s.util)
 			fmt.Fprintln(w)
-			printDisks(w, s.st, s.powerOn)
+			printDisks(w, s.st, s.health)
 			return w.Flush()
 		},
 	}
@@ -74,9 +74,9 @@ type status struct {
 	sys  *dsm.SystemInfo
 	util *dsm.Utilization
 	st   *dsm.Storage
-	// powerOn is the power-on hours of each disk by Disk.ID, for the disks
-	// whose SMART overview could be read.
-	powerOn map[string]float64
+	// health is the SMART overview of each disk by Disk.ID, for the disks
+	// whose overview could be read.
+	health map[string]dsm.DiskHealth
 }
 
 func loadStatus(ctx context.Context) (*status, error) {
@@ -99,7 +99,7 @@ func readStatus(ctx context.Context, client *dsm.Client) (*status, error) {
 			return err
 		}
 		// One call per disk, in the time Utilization takes anyway.
-		s.powerOn = powerOnHours(gctx, client, s.st.Disks)
+		s.health = diskHealth(gctx, client, s.st.Disks)
 		return nil
 	})
 	if err := g.Wait(); err != nil {
@@ -108,19 +108,19 @@ func readStatus(ctx context.Context, client *dsm.Client) (*status, error) {
 	return s, nil
 }
 
-// diskHealthSource is the part of dsm.Client that powerOnHours uses.
+// diskHealthSource is the part of dsm.Client that diskHealth uses.
 type diskHealthSource interface {
 	DiskHealth(ctx context.Context, device string) (*dsm.DiskHealth, error)
 }
 
-// powerOnHours reads the power-on hours of the disks in parallel. A disk
-// whose SMART overview cannot be read is left out rather than failing the
-// whole status, since the hours are a detail.
-func powerOnHours(ctx context.Context, c diskHealthSource, disks []dsm.Disk) map[string]float64 {
+// diskHealth reads the SMART overview of the disks in parallel. A disk
+// whose overview cannot be read is left out rather than failing the whole
+// status, since what it adds, like the power-on hours, is a detail.
+func diskHealth(ctx context.Context, c diskHealthSource, disks []dsm.Disk) map[string]dsm.DiskHealth {
 	var (
 		mu  sync.Mutex
 		wg  sync.WaitGroup
-		out = map[string]float64{}
+		out = map[string]dsm.DiskHealth{}
 	)
 	for _, d := range disks {
 		if d.Device == "" {
@@ -128,11 +128,11 @@ func powerOnHours(ctx context.Context, c diskHealthSource, disks []dsm.Disk) map
 		}
 		wg.Go(func() {
 			h, err := c.DiskHealth(ctx, d.Device)
-			if err != nil || h.PowerOnHours == nil || *h.PowerOnHours < 0 {
+			if err != nil {
 				return
 			}
 			mu.Lock()
-			out[d.ID] = float64(*h.PowerOnHours)
+			out[d.ID] = *h
 			mu.Unlock()
 		})
 	}
@@ -237,7 +237,10 @@ type diskReport struct {
 	// LifePercent is the life left that DSM estimates, mostly for SSDs.
 	LifePercent  *float64 `json:"life_percent,omitempty"`
 	PowerOnHours *float64 `json:"power_on_hours,omitempty"`
-	Pool         string   `json:"pool"`
+	// OnCompatibilityList tells whether the disk is on Synology's
+	// compatibility list for the model, left out when DSM does not say.
+	OnCompatibilityList *bool  `json:"on_compatibility_list,omitempty"`
+	Pool                string `json:"pool"`
 	ioReport
 }
 
@@ -255,12 +258,12 @@ func (s *status) report() statusReport {
 		MemoryBytes:   float64(u.Memory.TotalReal) * 1024,
 	}
 	r.Bays = newBayReport(s.st)
-	r.Pools, r.Volumes, r.Disks = storageReports(s.st, s.powerOn, s.util)
+	r.Pools, r.Volumes, r.Disks = storageReports(s.st, s.health, s.util)
 	return r
 }
 
 // storageReports turns the storage of status into its JSON.
-func storageReports(st *dsm.Storage, powerOn map[string]float64, u *dsm.Utilization) ([]poolReport, []volumeReport, []diskReport) {
+func storageReports(st *dsm.Storage, health map[string]dsm.DiskHealth, u *dsm.Utilization) ([]poolReport, []volumeReport, []diskReport) {
 	pools, volumes, disks := []poolReport{}, []volumeReport{}, []diskReport{}
 	for _, p := range st.StoragePools {
 		pr := poolReport{
@@ -299,8 +302,11 @@ func storageReports(st *dsm.Storage, powerOn map[string]float64, u *dsm.Utilizat
 		if v, ok := d.LifePercent(); ok {
 			dr.LifePercent = &v
 		}
-		if h, ok := powerOn[d.ID]; ok {
+		if h, ok := health[d.ID].Hours(); ok {
 			dr.PowerOnHours = &h
+		}
+		if l, ok := health[d.ID].Listed(); ok {
+			dr.OnCompatibilityList = &l
 		}
 		disks = append(disks, dr)
 	}
@@ -386,21 +392,28 @@ func printVolumes(w io.Writer, st *dsm.Storage, u *dsm.Utilization) {
 	}
 }
 
-func printDisks(w io.Writer, st *dsm.Storage, powerOn map[string]float64) {
-	fmt.Fprintln(w, "DISK\tMODEL\tSIZE\tSTATUS\tSMART\tTEMP\tLIFE\tPOWER-ON\tPOOL")
+func printDisks(w io.Writer, st *dsm.Storage, health map[string]dsm.DiskHealth) {
+	fmt.Fprintln(w, "DISK\tMODEL\tSIZE\tSTATUS\tSMART\tTEMP\tLIFE\tPOWER-ON\tLISTED\tPOOL")
 	for _, d := range st.Disks {
 		life := "-"
 		if v, ok := d.LifePercent(); ok {
 			life = fmt.Sprintf("%.0f%%", v)
 		}
 		hours := "-"
-		if h, ok := powerOn[d.ID]; ok {
+		if h, ok := health[d.ID].Hours(); ok {
 			hours = formatHours(h)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%.0f°C\t%s\t%s\t%s\n",
+		listed := "-"
+		if l, ok := health[d.ID].Listed(); ok {
+			listed = "no"
+			if l {
+				listed = "yes"
+			}
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%.0f°C\t%s\t%s\t%s\t%s\n",
 			d.Name, strings.Join(strings.Fields(d.Vendor+" "+d.Model), " "),
 			humanBytes(float64(d.SizeTotal)), d.Status, d.SmartStatus,
-			float64(d.Temp), life, hours, poolName(st, d.UsedBy))
+			float64(d.Temp), life, hours, listed, poolName(st, d.UsedBy))
 	}
 }
 

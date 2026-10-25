@@ -68,22 +68,33 @@ func (f fakeDiskHealth) DiskHealth(_ context.Context, device string) (*dsm.DiskH
 	return &h, nil
 }
 
-func TestPowerOnHours(t *testing.T) {
+func TestDiskHealth(t *testing.T) {
 	disks := []dsm.Disk{
 		{ID: "sata1", Device: "/dev/sata1"},
 		{ID: "sata2", Device: "/dev/sata2"}, // the SMART overview fails
 		{ID: "sata3"},                       // no device to ask for
-		{ID: "sata4", Device: "/dev/sata4"}, // a new disk
-		{ID: "sata5", Device: "/dev/sata5"}, // DSM leaves the hours out
+		{ID: "sata4", Device: "/dev/sata4"}, // a new disk, not on the list
+		{ID: "sata5", Device: "/dev/sata5"}, // DSM leaves both out
 	}
-	got := powerOnHours(context.Background(), fakeDiskHealth{
-		"/dev/sata1": `{"poweron":"23219"}`,
-		"/dev/sata4": `{"poweron":"0"}`,
+	got := diskHealth(context.Background(), fakeDiskHealth{
+		"/dev/sata1": `{"poweron":"23219","compatibility":"support"}`,
+		"/dev/sata4": `{"poweron":"0","compatibility":"not_in_support"}`,
 		"/dev/sata5": `{}`,
 	}, disks)
-	want := map[string]float64{"sata1": 23219, "sata4": 0}
-	if !maps.Equal(got, want) {
-		t.Errorf("got %v, want %v", got, want)
+	hours, listed := map[string]float64{}, map[string]bool{}
+	for id, h := range got {
+		if v, ok := h.Hours(); ok {
+			hours[id] = v
+		}
+		if l, ok := h.Listed(); ok {
+			listed[id] = l
+		}
+	}
+	if want := map[string]float64{"sata1": 23219, "sata4": 0}; !maps.Equal(hours, want) {
+		t.Errorf("hours = %v, want %v", hours, want)
+	}
+	if want := map[string]bool{"sata1": true, "sata4": false}; !maps.Equal(listed, want) {
+		t.Errorf("listed = %v, want %v", listed, want)
 	}
 }
 
@@ -95,7 +106,11 @@ func TestStatusReportDisks(t *testing.T) {
 	]}`), &st); err != nil {
 		t.Fatal(err)
 	}
-	s := &status{sys: &dsm.SystemInfo{}, util: &dsm.Utilization{}, st: &st, powerOn: map[string]float64{"sata1": 23219}}
+	var health dsm.DiskHealth
+	if err := json.Unmarshal([]byte(`{"poweron":"23219","compatibility":"not_in_support"}`), &health); err != nil {
+		t.Fatal(err)
+	}
+	s := &status{sys: &dsm.SystemInfo{}, util: &dsm.Utilization{}, st: &st, health: map[string]dsm.DiskHealth{"sata1": health}}
 	r := s.report()
 
 	hdd, ssd := r.Disks[0], r.Disks[1]
@@ -104,6 +119,9 @@ func TestStatusReportDisks(t *testing.T) {
 	}
 	if ssd.LifePercent == nil || *ssd.LifePercent != 87 || ssd.PowerOnHours != nil {
 		t.Errorf("M.2 Drive 1 = life %v, hours %v", ssd.LifePercent, ssd.PowerOnHours)
+	}
+	if hdd.OnCompatibilityList == nil || *hdd.OnCompatibilityList || ssd.OnCompatibilityList != nil {
+		t.Errorf("on the list: Drive 1 %v, M.2 Drive 1 %v", hdd.OnCompatibilityList, ssd.OnCompatibilityList)
 	}
 
 	b, err := json.Marshal(hdd)
@@ -116,7 +134,7 @@ func TestStatusReportDisks(t *testing.T) {
 
 	var out strings.Builder
 	w := tabwriter.NewWriter(&out, 0, 0, 3, ' ', 0)
-	printDisks(w, &st, s.powerOn)
+	printDisks(w, &st, s.health)
 	if err := w.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +142,7 @@ func TestStatusReportDisks(t *testing.T) {
 	if !strings.Contains(lines[0], "LIFE") || !strings.Contains(lines[0], "POWER-ON") {
 		t.Errorf("header = %q", lines[0])
 	}
-	if f := strings.Fields(lines[1]); !slices.Contains(f, "2.7y") {
+	if f := strings.Fields(lines[1]); !slices.Contains(f, "2.7y") || !slices.Contains(f, "no") {
 		t.Errorf("Drive 1 row = %q", lines[1])
 	}
 	if f := strings.Fields(lines[2]); !slices.Contains(f, "87%") {

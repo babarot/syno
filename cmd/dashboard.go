@@ -314,7 +314,7 @@ func readPanel(ctx context.Context, c *dsm.Client, panel string, cfg panelConfig
 			return nil, err
 		}
 		// The I/O comes with the system panel, which is refreshed more often.
-		pools, volumes, disks := storageReports(st, powerOnHours(ctx, c, st.Disks), nil)
+		pools, volumes, disks := storageReports(st, diskHealth(ctx, c, st.Disks), nil)
 		out := storagePanel{
 			Pools: make([]dashboardPool, len(pools)), Volumes: volumes, Disks: make([]dashboardDisk, len(disks)), Bays: newBayReport(st),
 			Thresholds: panelThresholds{th.ScrubAgeWarn.Hours() / 24, th.VolumeUsageWarn, th.VolumeUsageFail, th.DiskTempWarn, th.DiskTempFail},
