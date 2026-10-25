@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -53,14 +54,18 @@ func TestFormatHours(t *testing.T) {
 	}
 }
 
-type fakeDiskHealth map[string]float64
+type fakeDiskHealth map[string]string
 
 func (f fakeDiskHealth) DiskHealth(_ context.Context, device string) (*dsm.DiskHealth, error) {
-	h, ok := f[device]
+	overview, ok := f[device]
 	if !ok {
 		return nil, &dsm.APIError{API: "SYNO.Storage.CGI.Smart", Method: "get_health_info", Code: 117}
 	}
-	return &dsm.DiskHealth{PowerOnHours: dsm.Num(h)}, nil
+	var h dsm.DiskHealth
+	if err := json.Unmarshal([]byte(overview), &h); err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 
 func TestPowerOnHours(t *testing.T) {
@@ -68,11 +73,17 @@ func TestPowerOnHours(t *testing.T) {
 		{ID: "sata1", Device: "/dev/sata1"},
 		{ID: "sata2", Device: "/dev/sata2"}, // the SMART overview fails
 		{ID: "sata3"},                       // no device to ask for
-		{ID: "sata4", Device: "/dev/sata4"}, // DSM answers 0
+		{ID: "sata4", Device: "/dev/sata4"}, // a new disk
+		{ID: "sata5", Device: "/dev/sata5"}, // DSM leaves the hours out
 	}
-	got := powerOnHours(context.Background(), fakeDiskHealth{"/dev/sata1": 23219, "/dev/sata4": 0}, disks)
-	if len(got) != 1 || got["sata1"] != 23219 {
-		t.Errorf("got %v, want only sata1", got)
+	got := powerOnHours(context.Background(), fakeDiskHealth{
+		"/dev/sata1": `{"poweron":"23219"}`,
+		"/dev/sata4": `{"poweron":"0"}`,
+		"/dev/sata5": `{}`,
+	}, disks)
+	want := map[string]float64{"sata1": 23219, "sata4": 0}
+	if !maps.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
 

@@ -128,11 +128,11 @@ func powerOnHours(ctx context.Context, c diskHealthSource, disks []dsm.Disk) map
 		}
 		wg.Go(func() {
 			h, err := c.DiskHealth(ctx, d.Device)
-			if err != nil || h.PowerOnHours <= 0 {
+			if err != nil || h.PowerOnHours == nil || *h.PowerOnHours < 0 {
 				return
 			}
 			mu.Lock()
-			out[d.ID] = float64(h.PowerOnHours)
+			out[d.ID] = float64(*h.PowerOnHours)
 			mu.Unlock()
 		})
 	}
