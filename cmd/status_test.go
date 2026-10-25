@@ -205,6 +205,29 @@ func TestStatusReportIO(t *testing.T) {
 	}
 }
 
+func TestPrintPoolsReplacing(t *testing.T) {
+	var st dsm.Storage
+	if err := json.Unmarshal([]byte(`{"storagePools": [{"id": "reuse_1", "num_id": 1, "status": "replacing", "is_actioning": true,
+		"scrubbingStatus": "busy", "progress": {"percent": "12.5", "remaining_time": 5400}}]}`), &st); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	w := tabwriter.NewWriter(&out, 0, 0, 3, ' ', 0)
+	printPools(w, &st, time.Now())
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "replacing 12.50%, 1h 30m left") {
+		t.Errorf("got %q", out.String())
+	}
+	r := (&status{sys: &dsm.SystemInfo{}, util: &dsm.Utilization{}, st: &st}).report()
+	p := r.Pools[0]
+	if p.ScrubPercent != nil || p.Task == nil || p.Task.Name != "replacing" || p.Task.Percent != 12.5 ||
+		p.Task.SecondsLeft == nil || *p.Task.SecondsLeft != 5400 {
+		t.Errorf("pool = %+v, task = %+v", p, p.Task)
+	}
+}
+
 func TestPrintPoolsScrubbing(t *testing.T) {
 	var st dsm.Storage
 	if err := json.Unmarshal([]byte(`{"storagePools": [{"id": "reuse_1", "num_id": 1, "status": "background_scrubbing",
@@ -217,7 +240,7 @@ func TestPrintPoolsScrubbing(t *testing.T) {
 	if err := w.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "scrubbing 42.2%") {
+	if !strings.Contains(out.String(), "scrubbing 42.25%") {
 		t.Errorf("got %q", out.String())
 	}
 	r := (&status{sys: &dsm.SystemInfo{}, util: &dsm.Utilization{}, st: &st}).report()

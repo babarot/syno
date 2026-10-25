@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/babarot/syno/internal/dsm"
 )
 
 func checkPools(ctx context.Context, env *Env) (Result, error) {
@@ -20,7 +18,7 @@ func checkPools(ctx context.Context, env *Env) (Result, error) {
 	)
 	for _, p := range st.StoragePools {
 		name := poolName(p)
-		pct, scrubbing := p.Scrubbing()
+		task, running := p.Task()
 		switch {
 		case p.DiskFailureNumber > 0:
 			f.add(Fail, "%s has %s", name, plural(p.DiskFailureNumber, "failed disk"))
@@ -28,10 +26,15 @@ func checkPools(ctx context.Context, env *Env) (Result, error) {
 			f.add(Fail, "%s is missing %s", name, plural(len(p.MissingDrives), "drive"))
 		case isSpaceOnly(p):
 			// Reported by the volumes check.
-		case scrubbing && p.Status == dsm.StatusScrubbing:
+		case running && task.Name == "scrubbing":
 			// DSM shows the scrubbing in place of the pool's status, which
 			// is maintenance rather than a problem.
-			notes = append(notes, fmt.Sprintf("%s is being scrubbed (%.2f%%)", name, pct))
+			notes = append(notes, fmt.Sprintf("%s is being scrubbed (%.2f%%)", name, task.Percent))
+		case running && !p.SpaceStatus.ShowAttention && !p.SpaceStatus.ShowDanger:
+			// A task DSM flags neither for attention nor as a danger, like
+			// replacing a drive while the pool keeps its redundancy, is
+			// maintenance too.
+			notes = append(notes, fmt.Sprintf("%s is %s", name, task))
 		default:
 			f.add(summaryLevel(p.SummaryStatus), "%s is %s", name, p.Status)
 		}

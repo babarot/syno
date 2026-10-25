@@ -419,6 +419,23 @@ func scrubbingStorage(lastDone time.Time, scheduled bool) *dsm.Storage {
 	return st
 }
 
+func TestReplacingDrive(t *testing.T) {
+	st := healthyStorage()
+	p := &st.StoragePools[0]
+	p.Status, p.SummaryStatus, p.IsActioning = "replacing", "replacing", true
+	p.SpaceStatus.Status, p.SpaceStatus.Detail, p.SpaceStatus.SummaryStatus = "replacing", "replacing", "replacing"
+	p.Progress.Percent, p.Progress.RemainingTime = 0.45, 39702
+	if r := run(st, nil)["pools"]; r.Level != OK || r.Summary != "1 pool healthy, Pool 1 is replacing 0.45%, 11h 2m left" {
+		t.Errorf("pools: got %s %q", r.Level, r.Summary)
+	}
+
+	// A task DSM flags is still a problem.
+	p.SpaceStatus.ShowAttention = true
+	if r := run(st, nil)["pools"]; r.Level != Warn || r.Summary != "Pool 1 is replacing" {
+		t.Errorf("flagged: got %s %q", r.Level, r.Summary)
+	}
+}
+
 func TestScrubbingRuns(t *testing.T) {
 	results := run(scrubbingStorage(now.Add(-733*24*time.Hour), true), nil)
 	if r := results["pools"]; r.Level != OK || r.Summary != "1 pool healthy, Pool 1 is being scrubbed (0.30%)" {

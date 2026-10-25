@@ -141,13 +141,28 @@ function drawPool(p, th) {
   const scrub = days == null ? "never scrubbed" : `scrubbed ${Math.floor(days)} days ago`;
   // DSM shows the scrubbing in place of the pool's status.
   const status = running && p.status === "background_scrubbing" ? "normal, being scrubbed" : p.status;
+  // Other tasks, like replacing a drive, show up as the pool's status too.
+  const task = p.task && p.task.name !== "scrubbing" ? p.task : null;
   return `<div class="pool"><h4>${esc(p.name)}</h4>
     <dl class="kvs">
-      <dt>Status</dt><dd class="${p.status === "normal" || status !== p.status ? "" : "c-fail"}">${esc(status)}</dd>
+      <dt>Status</dt><dd class="${p.status === "normal" || status !== p.status || task ? "" : "c-fail"}">${esc(status)}</dd>
       <dt>RAID</dt><dd>${esc(p.raid)} · ${p.disks} ${p.disks === 1 ? "disk" : "disks"}</dd>
       <dt>Size</dt><dd>${hb(p.used_bytes)} of ${hb(p.total_bytes)}</dd>
       <dt>Scrubbing</dt><dd class="${scrubLate ? "c-warn" : ""}">${running ? "running now" : scrub}${p.scrub_scheduled ? "" : ", no schedule"}</dd>
-    </dl>${running ? drawScrub(p) : ""}</div>`;
+    </dl>${running ? drawScrub(p) : ""}${task ? drawTask(task) : ""}</div>`;
+}
+
+// drawTask shows how far a task on the pool has got, with the time left
+// that DSM estimates.
+function drawTask(t) {
+  const left = t.seconds_left == null ? "" : `about ${hoursLeft(t.seconds_left / 3600)} left`;
+  return `<div class="scrub"><div class="stackbar"><i style="width:${t.percent}%;background:var(--info)"></i></div>
+    <div class="legend"><span>${esc(t.name)} ${t.percent.toFixed(2)}%</span><span class="c-muted">${left}</span></div></div>`;
+}
+
+// hoursLeft shortens a time left in hours: "5 min", "9 h", "3 days".
+function hoursLeft(h) {
+  return h < 1 ? Math.max(1, Math.round(h * 60)) + " min" : h < 48 ? Math.round(h) + " h" : Math.round(h / 24) + " days";
 }
 
 // drawScrub shows how far a running scrubbing has got. DSM gives no time
@@ -161,7 +176,7 @@ function drawScrub(p) {
     const rate = (b.pct - a.pct) / ((b.t - a.t) / 3600000); // percent an hour
     if (rate > 0) {
       const h = (100 - pct) / rate;
-      left = `about ${h < 1 ? Math.max(1, Math.round(h * 60)) + " min" : h < 48 ? Math.round(h) + " h" : Math.round(h / 24) + " days"} left, guessed from the last ${ago((b.t - a.t) / 1000)}`;
+      left = `about ${hoursLeft(h)} left, guessed from the last ${ago((b.t - a.t) / 1000)}`;
     }
   }
   return `<div class="scrub"><div class="stackbar"><i style="width:${pct}%;background:var(--info)"></i></div>
