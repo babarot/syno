@@ -3,9 +3,11 @@ package dsm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Storage is SYNO.Storage.CGI.Storage load_info. It needs an administrator.
@@ -81,16 +83,21 @@ type StoragePool struct {
 	MissingDrives     []json.RawMessage `json:"missing_drives"`
 	// LastDoneTime is the Unix time of the last data scrubbing, 0 if never.
 	LastDoneTime int64 `json:"last_done_time"`
+	// IsActioning reports whether DSM runs a task on the pool, like
+	// replacing a drive.
+	IsActioning bool `json:"is_actioning"`
 	// IsScheduled reports whether data scrubbing runs on a schedule.
 	IsScheduled bool `json:"is_scheduled"`
 	// ScrubbingStatus is "ready", or like "manual_running" while data
 	// scrubbing runs.
 	ScrubbingStatus string `json:"scrubbingStatus"`
 	// Progress is how far a background task on the pool has got. For data
-	// scrubbing only Percent is set; Step stays "waiting".
+	// scrubbing only Percent is set; Step stays "waiting". Replacing a
+	// drive also has RemainingTime.
 	Progress struct {
-		Step    string `json:"step"`
-		Percent Num    `json:"percent"` // -1 when nothing runs
+		Step          string `json:"step"`
+		Percent       Num    `json:"percent"`        // -1 when nothing runs
+		RemainingTime Num    `json:"remaining_time"` // seconds, 0 when DSM does not estimate it
 	} `json:"progress"`
 }
 
@@ -104,6 +111,52 @@ func (p StoragePool) Scrubbing() (percent float64, ok bool) {
 		return 0, false
 	}
 	return max(float64(p.Progress.Percent), 0), true
+}
+
+// Task is a task that DSM runs on a storage pool.
+type Task struct {
+	// Name is "scrubbing", or the status DSM shows for the pool while the
+	// task runs, like "replacing".
+	Name    string
+	Percent float64
+	// Left is the time DSM expects the task to take yet, 0 when it does not
+	// estimate it.
+	Left time.Duration
+}
+
+// Task reports the task that runs on the pool and how far it has got.
+// Data scrubbing counts only while DSM shows it in place of the pool's
+// status, so that a task never hides a status like "degraded".
+func (p StoragePool) Task() (Task, bool) {
+	var name string
+	switch {
+	case p.Status == StatusScrubbing:
+		name = "scrubbing"
+	case p.IsActioning && p.Status != "" && p.Status != "normal":
+		name = p.Status
+	default:
+		return Task{}, false
+	}
+	return Task{
+		Name:    name,
+		Percent: max(float64(p.Progress.Percent), 0),
+		Left:    time.Duration(max(float64(p.Progress.RemainingTime), 0)) * time.Second,
+	}, true
+}
+
+// String tells how far the task has got, like "replacing 12.34%, 9h 30m
+// left".
+func (t Task) String() string {
+	s := fmt.Sprintf("%s %.2f%%", t.Name, t.Percent)
+	if t.Left > 0 {
+		m := int(t.Left.Round(time.Minute).Minutes())
+		if m < 60 {
+			s += fmt.Sprintf(", %dm left", max(m, 1))
+		} else {
+			s += fmt.Sprintf(", %dh %dm left", m/60, m%60)
+		}
+	}
+	return s
 }
 
 type Volume struct {
@@ -127,6 +180,10 @@ type SpaceStatus struct {
 	// Detail is why the space is not normal, e.g. "fs_almost_full".
 	Detail        string `json:"detail"`
 	SummaryStatus string `json:"summary_status"`
+	// ShowAttention and ShowDanger tell whether DSM flags the pool in
+	// Storage Manager. Neither is set while a drive is replaced.
+	ShowAttention bool `json:"show_attention"`
+	ShowDanger    bool `json:"show_danger"`
 }
 
 func (c *Client) Storage(ctx context.Context) (*Storage, error) {

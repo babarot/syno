@@ -141,7 +141,7 @@ type Check struct {
 
 // Checks lists every check in the order they are reported.
 var Checks = []Check{
-	{"pools", "Storage pools have no failed or missing disks and DSM reports them normal (data scrubbing counts as normal)", checkPools},
+	{"pools", "Storage pools have no failed or missing disks and DSM reports them normal (data scrubbing, and a task DSM does not flag such as replacing a drive, count as normal)", checkPools},
 	{"volumes", "Volumes are below the usage thresholds and DSM reports them normal", checkVolumes},
 	{"disks", "Disk status, SMART and the remaining life DSM estimates are normal", checkDisks},
 	{"disk-temperature", "Disks are below the temperature thresholds", checkDiskTemperature},

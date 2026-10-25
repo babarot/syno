@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestDiskLifePercent(t *testing.T) {
@@ -113,6 +114,39 @@ func TestUtilizationIO(t *testing.T) {
 	}
 	if d, ok := u.DiskIO("sata2"); !ok || d.WriteBytes != 16384 || d.Utilization != 6 {
 		t.Errorf("DiskIO(sata2) = %+v, %v", d, ok)
+	}
+}
+
+func TestPoolTask(t *testing.T) {
+	var pools []StoragePool
+	if err := json.Unmarshal([]byte(`[
+		{"status": "replacing", "is_actioning": true, "scrubbingStatus": "busy",
+		 "progress": {"step": "waiting", "percent": "0.45", "remaining_time": 39702}},
+		{"status": "background_scrubbing", "is_actioning": true, "scrubbingStatus": "manual_running",
+		 "progress": {"step": "waiting", "percent": "0.30"}},
+		{"status": "normal", "scrubbingStatus": "ready", "progress": {"step": "none", "percent": "-1"}},
+		{"status": "normal", "is_actioning": true, "progress": {"percent": "-1"}}
+	]`), &pools); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		want Task
+		ok   bool
+		str  string
+	}{
+		{Task{Name: "replacing", Percent: 0.45, Left: 39702 * time.Second}, true, "replacing 0.45%, 11h 2m left"},
+		{Task{Name: "scrubbing", Percent: 0.3}, true, "scrubbing 0.30%"},
+		{Task{}, false, ""},
+		{Task{}, false, ""},
+	}
+	for i, tt := range tests {
+		got, ok := pools[i].Task()
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("pool %d: got %+v, %v, want %+v, %v", i, got, ok, tt.want, tt.ok)
+		}
+		if ok && got.String() != tt.str {
+			t.Errorf("pool %d: String() = %q, want %q", i, got.String(), tt.str)
+		}
 	}
 }
 

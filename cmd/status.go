@@ -187,6 +187,16 @@ type poolReport struct {
 	ScrubScheduled bool       `json:"scrub_scheduled"`
 	// ScrubPercent is how far data scrubbing has got while it runs.
 	ScrubPercent *float64 `json:"scrub_percent,omitempty"`
+	// Task is the task DSM runs on the pool, like replacing a drive.
+	Task *taskReport `json:"task,omitempty"`
+}
+
+type taskReport struct {
+	Name    string  `json:"name"`
+	Percent float64 `json:"percent"`
+	// SecondsLeft is left out when DSM does not estimate it, as for data
+	// scrubbing.
+	SecondsLeft *float64 `json:"seconds_left,omitempty"`
 }
 
 type volumeReport struct {
@@ -264,6 +274,13 @@ func storageReports(st *dsm.Storage, powerOn map[string]float64, u *dsm.Utilizat
 		if pct, ok := p.Scrubbing(); ok {
 			pr.ScrubPercent = &pct
 		}
+		if t, ok := p.Task(); ok {
+			pr.Task = &taskReport{Name: t.Name, Percent: t.Percent}
+			if t.Left > 0 {
+				left := t.Left.Seconds()
+				pr.Task.SecondsLeft = &left
+			}
+		}
 		pools = append(pools, pr)
 	}
 	for _, v := range st.Volumes {
@@ -328,8 +345,8 @@ func printPools(w io.Writer, st *dsm.Storage, now time.Time) {
 	fmt.Fprintln(w, "POOL\tSTATUS\tTYPE\tDISKS\tUSED\tTOTAL\tUSE%\tSCRUBBED")
 	for _, p := range st.StoragePools {
 		status := p.Status
-		if pct, ok := p.Scrubbing(); ok && status == dsm.StatusScrubbing {
-			status = fmt.Sprintf("scrubbing %.1f%%", pct)
+		if t, ok := p.Task(); ok {
+			status = t.String()
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
 			poolName(st, p.ID), status, dsm.RAIDName(p.DeviceType), len(p.Disks),
