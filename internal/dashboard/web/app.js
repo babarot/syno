@@ -254,13 +254,16 @@ function drawStorage(d, recycle) {
     const hours = x.power_on_hours == null
       ? `<span class="c-muted" style="grid-column:span 2">not reported by DSM</span>`
       : `<span class="c-muted">${(x.power_on_hours / 24 / 365).toFixed(1)} years</span><span class="v">${Math.round(x.power_on_hours).toLocaleString()}h</span>`;
+    // Whether the disk is on Synology's compatibility list for the model.
+    const listed = x.on_compatibility_list == null ? ""
+      : `<span class="led ${x.on_compatibility_list ? "on" : "warn"}">${x.on_compatibility_list ? "on compat list" : "not on compat list"}</span>`;
     return `<div class="bay ${lv}">
       <div class="top"><span class="name">${esc(x.name)}</span><span class="tag">${esc(x.type)}</span></div>
       <div class="model" title="${esc(x.model)}">${esc(x.model)} · ${hb(x.size_bytes)}</div>
       <div class="row"><span>Temp</span><span class="thermo" style="background:linear-gradient(90deg, var(--ok) 0 ${wpos}%, var(--warn) ${wpos}% ${fpos}%, var(--fail) ${fpos}%)"><b style="left:calc(${tpos}% - 1px)"></b></span><span class="v">${x.temperature_c.toFixed(0)}°C</span></div>
       <div class="row"><span>Life left</span>${life}</div>
       <div class="row"><span>Power-on</span>${hours}</div>
-      <div class="leds"><span class="led ${x.status === "normal" ? "on" : "bad"}">status ${esc(x.status)}</span><span class="led ${x.smart === "normal" ? "on" : "bad"}">SMART ${esc(x.smart)}</span><span class="led ${bad ? "bad" : "on"}">${x.bad_sectors} bad sectors</span><span class="led">${esc(x.pool)}</span></div></div>`;
+      <div class="leds"><span class="led ${x.status === "normal" ? "on" : "bad"}">status ${esc(x.status)}</span><span class="led ${x.smart === "normal" ? "on" : "bad"}">SMART ${esc(x.smart)}</span><span class="led ${bad ? "bad" : "on"}">${x.bad_sectors} bad sectors</span>${listed}<span class="led">${esc(x.pool)}</span></div></div>`;
   }).join("") : `<div class="empty">No disks.</div>`;
   $("bay-count").textContent = d.bays ? `· ${d.bays.used} of ${d.bays.total} bays used` : "";
 }
