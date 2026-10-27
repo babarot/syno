@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -144,7 +145,7 @@ func (c *Client) CallPath(ctx context.Context, path, api string, version int, me
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return explainTimeout(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -204,3 +205,14 @@ func (c *Client) SetSID(sid string) {
 // lost during it, even where the error itself was turned into a message,
 // as in the doctor results.
 func (c *Client) SessionLosses() uint64 { return c.lost.Load() }
+
+// explainTimeout says why DSM may not have answered in time. With disk
+// hibernation on, the first request after a quiet spell waits for the
+// disks to spin up, which took 35 seconds for four disks on a DS923+, and
+// running the command again then works.
+func explainTimeout(err error) error {
+	if ue, ok := errors.AsType[*url.Error](err); ok && ue.Timeout() {
+		return fmt.Errorf("%w; DSM may be waking its disks from hibernation, which can take a minute, so try again shortly", err)
+	}
+	return err
+}
