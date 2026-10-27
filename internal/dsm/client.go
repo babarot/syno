@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -56,8 +57,14 @@ func newClient(base string, cfg *tls.Config) *Client {
 	return &Client{
 		Base: strings.TrimSuffix(base, "/"),
 		http: &http.Client{
-			Timeout:   15 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: cfg},
+			Timeout: 15 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: cfg,
+				// A NAS that is off fails here, sooner than the timeout
+				// above, and explainTimeout tells it from one whose disks
+				// are waking up.
+				DialContext: (&net.Dialer{Timeout: dialTimeout}).DialContext,
+			},
 		},
 	}
 }
@@ -206,13 +213,23 @@ func (c *Client) SetSID(sid string) {
 // as in the doctor results.
 func (c *Client) SessionLosses() uint64 { return c.lost.Load() }
 
-// explainTimeout says why DSM may not have answered in time. With disk
-// hibernation on, the first request after a quiet spell waits for the
-// disks to spin up, which took 35 seconds for four disks on a DS923+, and
-// running the command again then works.
+// dialTimeout bounds connecting to DSM. On a LAN or a VPN it takes well
+// under a second.
+const dialTimeout = 5 * time.Second
+
+// explainTimeout says why DSM may not have answered in time. When the
+// connection could not be made, the NAS is off or out of reach. When it
+// was made but no answer came, the NAS may have disk hibernation on: the
+// first request after a quiet spell waits for the disks to spin up, which
+// took 35 seconds for four disks on a DS923+, and running the command
+// again then works.
 func explainTimeout(err error) error {
-	if ue, ok := errors.AsType[*url.Error](err); ok && ue.Timeout() {
-		return fmt.Errorf("%w; DSM may be waking its disks from hibernation, which can take a minute, so try again shortly", err)
+	ue, ok := errors.AsType[*url.Error](err)
+	if !ok || !ue.Timeout() {
+		return err
 	}
-	return err
+	if oe, ok := errors.AsType[*net.OpError](err); ok && oe.Op == "dial" {
+		return fmt.Errorf("%w; could not connect to the NAS, so check that it is on and reachable", err)
+	}
+	return fmt.Errorf("%w; DSM may be waking its disks from hibernation, which can take a minute, so try again shortly", err)
 }
