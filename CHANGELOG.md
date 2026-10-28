@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.5.1](https://github.com/babarot/syno/compare/v0.5.0...v0.5.1) - 2026-10-28
+### Bug fixes
+- Show zero power-on hours of a new disk instead of a dash by @babarot in https://github.com/babarot/syno/pull/37
+### Improvements
+- Scroll the update list within the dashboard's updates panel by @babarot in https://github.com/babarot/syno/pull/35
+- Show how far a task on a storage pool has got, like replacing a drive by @babarot in https://github.com/babarot/syno/pull/38
+- Show whether a disk is on Synology's compatibility list by @babarot in https://github.com/babarot/syno/pull/39
+- Tell waking disks from a NAS that is off when DSM times out by @babarot in https://github.com/babarot/syno/pull/40
+
 ## [v0.5.0](https://github.com/babarot/syno/compare/v0.4.0...v0.5.0) - 2026-10-10
 ### New Features
 - Add syno dashboard, a web page of the NAS on localhost by @babarot in https://github.com/babarot/syno/pull/27
