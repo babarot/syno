@@ -374,9 +374,10 @@ syno has been tested with a DS923+ on DSM 7.2.2. Most of the DSM Web APIs it use
 ## Development
 
 ```bash
-make build   # ./syno
-make test    # go vet and go test
-make lint    # golangci-lint
+mise run build   # ./syno
+mise run test    # gofmt, go vet and go test with the race detector
+mise run lint    # golangci-lint and go mod tidy
+mise run vuln    # govulncheck
 ```
 
 ## License
