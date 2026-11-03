@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.5.2](https://github.com/babarot/syno/compare/v0.5.1...v0.5.2) - 2026-11-03
+### Improvements
+- Check vulnerabilities, tidiness and coverage in CI by @babarot in https://github.com/babarot/syno/pull/41
+
 ## [v0.5.1](https://github.com/babarot/syno/compare/v0.5.0...v0.5.1) - 2026-10-28
 ### Bug fixes
 - Show zero power-on hours of a new disk instead of a dash by @babarot in https://github.com/babarot/syno/pull/37
