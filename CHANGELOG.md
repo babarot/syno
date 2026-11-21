@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.5.2](https://github.com/babarot/syno/compare/v0.5.1...v0.5.2) - 2026-11-21
+### Bug fixes
+- Bump Go to 1.26.11 for GO-2026-6859 by @babarot in https://github.com/babarot/syno/pull/45
+### Improvements
+- Check vulnerabilities, tidiness and coverage in CI by @babarot in https://github.com/babarot/syno/pull/41
+- Explain "no route to host" when the NAS cannot be reached by @babarot in https://github.com/babarot/syno/pull/46
+
 ## [v0.5.1](https://github.com/babarot/syno/compare/v0.5.0...v0.5.1) - 2026-10-28
 ### Bug fixes
 - Show zero power-on hours of a new disk instead of a dash by @babarot in https://github.com/babarot/syno/pull/37
