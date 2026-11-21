@@ -2,7 +2,7 @@
 package version
 
 // Version is the current release.
-const Version = "0.5.1"
+const Version = "0.5.2"
 
 // Source is "release" in the binaries the release workflow builds (its
 // -ldflags set it), and empty in any other build: mise run install, go install.
