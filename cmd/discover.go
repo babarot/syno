@@ -27,6 +27,7 @@ Candidates are collected from mDNS, the ARP table (filtered by Synology's MAC
 vendor prefixes) and, with --scan, a TCP sweep of the local subnets. Each
 candidate is then checked for a DSM Web API on ports 5000/5001.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Warn = func(msg string) { fmt.Fprintln(os.Stderr, "Warning:", msg) }
 			devices, err := discover.Run(cmd.Context(), opts)
 			if err != nil {
 				return err

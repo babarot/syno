@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/babarot/syno/internal/netdiag"
 )
 
 const session = "syno"
@@ -152,7 +154,7 @@ func (c *Client) CallPath(ctx context.Context, path, api string, version int, me
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return explainTimeout(err)
+		return netdiag.Explain(ctx, explainTimeout(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
