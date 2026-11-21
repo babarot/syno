@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+
+	"github.com/babarot/syno/internal/netdiag"
 )
 
 // Pin returns the SHA-256 of the certificate's public key (SPKI) as
@@ -102,7 +104,8 @@ func ProbeTLS(ctx context.Context, base string, roots *x509.CertPool) (*TLSProbe
 	}
 	var certErr *tls.CertificateVerificationError
 	if !errors.As(verifyErr, &certErr) {
-		return nil, verifyErr // not a certificate problem, e.g. connection refused
+		// Not a certificate problem, e.g. connection refused.
+		return nil, netdiag.Explain(ctx, verifyErr)
 	}
 	cert, err = dial(&tls.Config{InsecureSkipVerify: true})
 	if err != nil {

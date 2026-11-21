@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,7 +58,11 @@ func selectProfile() (string, *config.Profile, error) {
 // discoverOne finds the DSM on the network when exactly one answers, and
 // returns its URL and mDNS name.
 func discoverOne(ctx context.Context) (string, string, error) {
-	devices, err := discover.Run(ctx, discover.Options{Timeout: discoverTimeout})
+	var warnings []string
+	devices, err := discover.Run(ctx, discover.Options{
+		Timeout: discoverTimeout,
+		Warn:    func(msg string) { warnings = append(warnings, msg) },
+	})
 	if err != nil {
 		return "", "", err
 	}
@@ -69,6 +74,10 @@ func discoverOne(ctx context.Context) (string, string, error) {
 	}
 	switch len(found) {
 	case 0:
+		if len(warnings) > 0 {
+			// Say why a NAS that is on the network did not count.
+			return "", "", fmt.Errorf("no DSM found on the network, pass --host (%s)", strings.Join(warnings, "; "))
+		}
 		return "", "", errors.New("no DSM found on the network, pass --host")
 	case 1:
 		return found[0].DSMURL, found[0].Name, nil

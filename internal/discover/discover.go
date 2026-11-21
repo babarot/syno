@@ -2,12 +2,15 @@ package discover
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/babarot/syno/internal/netdiag"
 )
 
 // Options controls how discovery runs.
@@ -16,6 +19,9 @@ type Options struct {
 	Timeout time.Duration
 	// Scan enables a TCP sweep of the local subnets.
 	Scan bool
+	// Warn, when set, receives what may have kept a device from being
+	// fully found, such as a NAS whose DSM could not be reached.
+	Warn func(msg string)
 }
 
 // Device is a Synology NAS found on the network.
@@ -78,16 +84,21 @@ func Run(ctx context.Context, opts Options) ([]Device, error) {
 	// Probe DSM on every candidate. Connecting also fills the ARP table,
 	// so the MAC lookup below can see hosts we have not talked to before.
 	dsm := map[netip.Addr]string{}
+	failed := map[netip.Addr]error{}
 	var mu sync.Mutex
+	probe := func(ip netip.Addr) {
+		u, err := probeDSM(ctx, ip)
+		mu.Lock()
+		defer mu.Unlock()
+		if u != "" {
+			dsm[ip] = u
+		} else {
+			failed[ip] = err
+		}
+	}
 	var wg sync.WaitGroup
 	for ip := range cands {
-		wg.Go(func() {
-			if u := probeDSM(ctx, ip); u != "" {
-				mu.Lock()
-				dsm[ip] = u
-				mu.Unlock()
-			}
-		})
+		wg.Go(func() { probe(ip) })
 	}
 	wg.Wait()
 
@@ -99,9 +110,7 @@ func Run(ctx context.Context, opts Options) ([]Device, error) {
 		if isSynologyMAC(mac) {
 			add(ip, "", "arp")
 			if _, ok := dsm[ip]; !ok {
-				if u := probeDSM(ctx, ip); u != "" {
-					dsm[ip] = u
-				}
+				probe(ip)
 			}
 		}
 	}
@@ -115,6 +124,13 @@ func Run(ctx context.Context, opts Options) ([]Device, error) {
 		}
 		if c.name == "" {
 			c.name = lookupName(ip)
+		}
+		if dsm[ip] == "" && opts.Warn != nil {
+			// mDNS and the name lookup fail the same way, so a device
+			// listed without a name or DSM URL may be explained here.
+			if ap, ok := netdiag.Unreachable(failed[ip]); ok {
+				opts.Warn(fmt.Sprintf("%s: DSM could not be reached: %s", ip, netdiag.Hint(ctx, ap)))
+			}
 		}
 		devices = append(devices, Device{
 			Name:    c.name,
